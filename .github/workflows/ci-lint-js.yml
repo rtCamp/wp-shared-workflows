@@ -1,0 +1,45 @@
+name: CI / Lint JS
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version to install on the runner."
+        type: string
+        default: "22"
+      lint-command:
+        description: "Command used to run ESLint. Consumers usually keep the default and define the script in their own package.json."
+        type: string
+        default: "npm run lint:js"
+      enable-package-json-validation:
+        description: "Run a package.json validation step after ESLint. Disable to opt out per consumer."
+        type: boolean
+        default: true
+      package-json-command:
+        description: "Command used to validate package.json. Default uses --if-present so consumers can roll out gradually without breaking CI."
+        type: string
+        default: "npm run lint:package-json --if-present"
+
+jobs:
+  lint-js:
+    name: ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: ${{ inputs.lint-command }}
+
+      - name: Validate package.json
+        if: ${{ inputs.enable-package-json-validation }}
+        run: ${{ inputs.package-json-command }}

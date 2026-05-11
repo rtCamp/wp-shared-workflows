@@ -1,0 +1,33 @@
+name: CI / Lint CSS
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version to install on the runner."
+        type: string
+        default: "22"
+      lint-command:
+        description: "Command used to run Stylelint. Consumers usually keep the default and define the script in their own package.json."
+        type: string
+        default: "npm run lint:css"
+
+jobs:
+  lint-css:
+    name: Stylelint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run Stylelint
+        run: ${{ inputs.lint-command }}

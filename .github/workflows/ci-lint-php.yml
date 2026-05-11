@@ -1,0 +1,61 @@
+name: CI / Lint PHP
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: "PHP version installed for PHPCS (and PHPStan when enabled)."
+        type: string
+        default: "8.3"
+      enable-phpstan:
+        description: "Run PHPStan after PHPCS. The PHPStan level lives in the consumer's phpstan.neon.dist."
+        type: boolean
+        default: false
+      phpcs-command:
+        description: "PHPCS command to run. Default emits checkstyle XML piped to cs2pr with --graceful-warnings (warnings annotate the PR but don't fail the job; errors do)."
+        type: string
+        default: 'vendor/bin/phpcs -q --report=checkstyle --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 | cs2pr --graceful-warnings'
+      phpstan-command:
+        description: "PHPStan command run when enable-phpstan is true. Default delegates to a consumer-defined composer script."
+        type: string
+        default: "composer phpstan"
+
+jobs:
+  lint-php:
+    name: Lint PHP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer, cs2pr
+          coverage: none
+
+      - name: Validate composer.json
+        run: composer validate --no-check-publish
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php${{ inputs.php-version }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run PHPCS
+        run: ${{ inputs.phpcs-command }}
+
+      - name: Run PHPStan
+        if: ${{ inputs.enable-phpstan }}
+        run: ${{ inputs.phpstan-command }}
