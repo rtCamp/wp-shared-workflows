@@ -8,17 +8,23 @@ on:
         type: string
         default: "22"
       lint-command:
-        description: "Command used to run ESLint. Consumers usually keep the default and define the script in their own package.json."
+        description: "Shell command that runs ESLint. Must exit non-zero on lint failure."
         type: string
         default: "npm run lint:js"
       enable-package-json-validation:
-        description: "Run a package.json validation step after ESLint. Disable to opt out per consumer."
+        description: "When true, also run the package.json validation command."
         type: boolean
         default: true
       package-json-command:
-        description: "Command used to validate package.json. Default uses --if-present so consumers can roll out gradually without breaking CI."
+        description: |
+          Shell command that validates package.json. Default uses `--if-present`
+          so the step is a no-op when the script is missing — flip the toggle
+          off to skip the step entirely.
         type: string
         default: "npm run lint:package-json --if-present"
+
+permissions:
+  contents: read
 
 jobs:
   lint-js:
@@ -26,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -37,9 +43,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Run ESLint
-        run: ${{ inputs.lint-command }}
-
       - name: Validate package.json
         if: ${{ inputs.enable-package-json-validation }}
         run: ${{ inputs.package-json-command }}
+
+      - name: Run ESLint
+        run: ${{ inputs.lint-command }}

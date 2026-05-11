@@ -12,13 +12,24 @@ on:
         type: boolean
         default: false
       phpcs-command:
-        description: "PHPCS command to run. Default emits checkstyle XML piped to cs2pr with --graceful-warnings (warnings annotate the PR but don't fail the job; errors do)."
+        description: |
+          Shell command that runs PHPCS. Default matches the rtCamp legacy
+          behaviour — checkstyle output piped through cs2pr with graceful
+          warnings, soft PHPCS exit (so cs2pr annotates rather than failing
+          the job outright on warnings).
         type: string
-        default: 'vendor/bin/phpcs -q --report=checkstyle --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 | cs2pr --graceful-warnings'
+        default: |
+          vendor/bin/phpcs -q --report=checkstyle \
+            --runtime-set ignore_errors_on_exit 1 \
+            --runtime-set ignore_warnings_on_exit 1 \
+            | cs2pr --graceful-warnings
       phpstan-command:
-        description: "PHPStan command run when enable-phpstan is true. Default delegates to a consumer-defined composer script."
+        description: "Shell command that runs PHPStan. Level / config live in the consumer's phpstan.neon.dist."
         type: string
         default: "composer phpstan"
+
+permissions:
+  contents: read
 
 jobs:
   lint-php:
@@ -26,13 +37,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Set up PHP
         uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # v2
         with:
           php-version: ${{ inputs.php-version }}
-          tools: composer, cs2pr
+          tools: cs2pr
           coverage: none
 
       - name: Validate composer.json
@@ -43,7 +54,7 @@ jobs:
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: composer-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles('**/composer.lock') }}
@@ -51,7 +62,7 @@ jobs:
             composer-${{ runner.os }}-php${{ inputs.php-version }}-
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
+        run: composer install --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts
 
       - name: Run PHPCS
         run: ${{ inputs.phpcs-command }}
