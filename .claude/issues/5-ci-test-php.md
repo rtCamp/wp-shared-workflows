@@ -45,11 +45,31 @@ Every rtCamp WordPress project that ships PHP currently copy-pastes the same `un
 ## Verification run
 
 ```bash
-$ pipx run yamllint .
-# (clean exit)
+ pipx run yamllint .
+❯ act workflow_call -W .github/workflows/ci-test-php.yml --dryrun
+INFO[0000] Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock' 
+WARN  ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠  
+*DRYRUN* [CI / Test PHP/PHPUnit] ⭐ Run Set up job
+*DRYRUN* [CI / Test PHP/PHPUnit] 🚀  Start image=node:16-buster-slim
+*DRYRUN* [CI / Test PHP/PHPUnit]   🐳  docker pull image=node:16-buster-slim platform= username= forcePull=true
+*DRYRUN* [CI / Test PHP/PHPUnit]   🐳  docker create image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CI / Test PHP/PHPUnit]   🐳  docker run image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CI / Test PHP/PHPUnit]   ✅  Success - Set up job
+*DRYRUN* [CI / Test PHP/PHPUnit]   ☁  git clone 'https://github.com/shivammathur/setup-php' # ref=accd6127cb78bee3e8082180cb391013d204ef9f
+*DRYRUN* [CI / Test PHP/PHPUnit]   ☁  git clone 'https://github.com/actions/setup-node' # ref=39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+*DRYRUN* [CI / Test PHP/PHPUnit] ⭐ Run Main Checkout repository
+*DRYRUN* [CI / Test PHP/PHPUnit]   ✅  Success - Main Checkout repository [5.999542ms]
+*DRYRUN* [CI / Test PHP/PHPUnit] ⭐ Run Main Set up PHP
+*DRYRUN* [CI / Test PHP/PHPUnit]   ✅  Success - Main Set up PHP [5.649958ms]
+*DRYRUN* [CI / Test PHP/PHPUnit] ⭐ Run Main Install Composer dependencies
+*DRYRUN* [CI / Test PHP/PHPUnit]   ✅  Success - Main Install Composer dependencies [13.607667ms]
+*DRYRUN* [CI / Test PHP/PHPUnit] ⭐ Run Main Run PHPUnit
+*DRYRUN* [CI / Test PHP/PHPUnit]   ✅  Success - Main Run PHPUnit [12.081917ms]
+*DRYRUN* [CI / Test PHP/PHPUnit] ⭐ Run Complete job
+*DRYRUN* [CI / Test PHP/PHPUnit] Cleaning up container for job PHPUnit
+*DRYRUN* [CI / Test PHP/PHPUnit]   ✅  Success - Complete job
+*DRYRUN* [CI / Test PHP/PHPUnit] 🏁  Job succeeded
 ```
-
-`act --dryrun` not run locally — `act` is not installed on this machine. Full end-to-end verification deferred to a smoke-test consumer repo with `@wordpress/env`, `composer.json`, and a passing PHPUnit fixture; reviewer to confirm during PR review.
 
 ---
 
