@@ -4,24 +4,21 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: "Node.js version to install on the runner."
+        description: "Node.js version."
         type: string
         default: "22"
       lint-command:
-        description: "Shell command that runs ESLint. Must exit non-zero on lint failure."
+        description: "Shell command that runs ESLint."
         type: string
         default: "npm run lint:js"
-      enable-package-json-validation:
-        description: "When true, also run the package.json validation command."
+      validate-package-json:
+        description: "Run `npm run lint:package-json` before ESLint."
         type: boolean
         default: true
-      package-json-command:
-        description: |
-          Shell command that validates package.json. Default uses `--if-present`
-          so the step is a no-op when the script is missing — flip the toggle
-          off to skip the step entirely.
+      working-dir:
+        description: "Working directory for monorepos."
         type: string
-        default: "npm run lint:package-json --if-present"
+        default: "."
 
 permissions:
   contents: read
@@ -30,6 +27,9 @@ jobs:
   lint-js:
     name: ESLint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -44,8 +44,8 @@ jobs:
         run: npm ci
 
       - name: Validate package.json
-        if: ${{ inputs.enable-package-json-validation }}
-        run: ${{ inputs.package-json-command }}
+        if: ${{ inputs.validate-package-json }}
+        run: npm run lint:package-json
 
       - name: Run ESLint
         run: ${{ inputs.lint-command }}

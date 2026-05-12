@@ -4,29 +4,37 @@ on:
   workflow_call:
     inputs:
       php-version:
-        description: "PHP version installed for PHPCS (and PHPStan when enabled)."
+        description: "PHP version."
         type: string
         default: "8.3"
       enable-phpstan:
-        description: "Run PHPStan after PHPCS. The PHPStan level lives in the consumer's phpstan.neon.dist."
+        description: "Run PHPStan after PHPCS."
         type: boolean
         default: false
       phpcs-command:
-        description: |
-          Shell command that runs PHPCS. Default matches the rtCamp legacy
-          behaviour — checkstyle output piped through cs2pr with graceful
-          warnings, soft PHPCS exit (so cs2pr annotates rather than failing
-          the job outright on warnings).
+        description: "PHPCS binary path or custom command."
         type: string
-        default: |
-          vendor/bin/phpcs -q --report=checkstyle \
-            --runtime-set ignore_errors_on_exit 1 \
-            --runtime-set ignore_warnings_on_exit 1 \
-            | cs2pr --graceful-warnings
+        default: "vendor/bin/phpcs"
       phpstan-command:
-        description: "Shell command that runs PHPStan. Level / config live in the consumer's phpstan.neon.dist."
+        description: "Shell command that runs PHPStan."
         type: string
-        default: "composer phpstan"
+        default: "vendor/bin/phpstan analyse"
+      phpstan-level:
+        description: "Override PHPStan level. Empty uses the level from phpstan.neon.dist."
+        type: string
+        default: ""
+      composer-flags:
+        description: "Flags passed to `composer install`. Default includes `--no-scripts` for supply-chain hygiene."
+        type: string
+        default: "--prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
+      validate-composer:
+        description: "Run `composer validate` before installing. Disable for packages without composer.lock."
+        type: boolean
+        default: true
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
 
 permissions:
   contents: read
@@ -35,6 +43,9 @@ jobs:
   lint-php:
     name: Lint PHP
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -47,6 +58,7 @@ jobs:
           coverage: none
 
       - name: Validate composer.json
+        if: ${{ inputs.validate-composer }}
         run: composer validate --no-check-publish
 
       - name: Resolve Composer cache directory
@@ -62,11 +74,17 @@ jobs:
             composer-${{ runner.os }}-php${{ inputs.php-version }}-
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts
+        run: composer install ${{ inputs.composer-flags }}
 
       - name: Run PHPCS
-        run: ${{ inputs.phpcs-command }}
+        run: |
+          ${{ inputs.phpcs-command }} -q --report=checkstyle \
+            --runtime-set ignore_errors_on_exit 1 \
+            --runtime-set ignore_warnings_on_exit 1 \
+            | cs2pr --graceful-warnings
 
       - name: Run PHPStan
         if: ${{ inputs.enable-phpstan }}
-        run: ${{ inputs.phpstan-command }}
+        run: >-
+          ${{ inputs.phpstan-command }}
+          ${{ inputs.phpstan-level != '' && format('--level={0}', inputs.phpstan-level) || '' }}
