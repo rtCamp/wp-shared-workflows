@@ -1,0 +1,68 @@
+name: CI / Build
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version to install."
+        type: string
+        default: "22"
+      build-command:
+        description: "Shell command that produces the production build."
+        type: string
+        default: "npm run build:prod"
+      upload-artifact:
+        description: "Upload the build output as a GitHub Actions artifact for downstream jobs."
+        type: boolean
+        default: false
+      artifact-name:
+        description: "Name used when uploading the artifact (and when a CD job downloads it)."
+        type: string
+        default: "build"
+      artifact-path:
+        description: "Path to upload. Relative to working-dir."
+        type: string
+        default: "build/"
+      retention-days:
+        description: "Days to keep the artifact before GitHub deletes it."
+        type: number
+        default: 7
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build production assets
+        run: ${{ inputs.build-command }}
+
+      - name: Upload build artifact
+        if: ${{ inputs.upload-artifact }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-dir }}/${{ inputs.artifact-path }}
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
