@@ -1,0 +1,75 @@
+name: CI / Test PHP
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: "PHP version to install."
+        type: string
+        default: "8.3"
+      node-version:
+        description: "Node.js version (used only when use-wp-env is true)."
+        type: string
+        default: "22"
+      use-wp-env:
+        description: "Start @wordpress/env before tests for WordPress integration runs."
+        type: boolean
+        default: true
+      test-command:
+        description: "Shell command that runs PHPUnit."
+        type: string
+        default: "npm run test:php"
+      composer-flags:
+        description: "Flags passed to composer install."
+        type: string
+        default: "--no-interaction --prefer-dist --no-progress --no-scripts"
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  test-php:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          coverage: none
+          tools: composer
+
+      - name: Set up Node.js
+        if: ${{ inputs.use-wp-env }}
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install Composer dependencies
+        run: composer install ${{ inputs.composer-flags }}
+
+      - name: Install npm dependencies
+        if: ${{ inputs.use-wp-env }}
+        run: npm ci
+
+      - name: Start wp-env
+        if: ${{ inputs.use-wp-env }}
+        run: npm run wp-env start
+
+      - name: Run PHPUnit
+        run: ${{ inputs.test-command }}
+
+      - name: Stop wp-env
+        if: ${{ inputs.use-wp-env && always() }}
+        run: npm run wp-env stop
