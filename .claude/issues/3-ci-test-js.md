@@ -37,8 +37,32 @@ Every rtCamp WordPress project that ships JS runs the same Jest pipeline — `Te
 ## Verification run
 
 ```bash
-$ pipx run yamllint .github/workflows/ci-test-js.yml
-(no output — clean)
+❯ pipx run yamllint .
+❯ act workflow_call -W .github/workflows/ci-test-js.yml --dryrun
+INFO[0000] Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock' 
+WARN  ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠  
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Set up job
+*DRYRUN* [CI / Test JS/Jest] 🚀  Start image=node:16-buster-slim
+*DRYRUN* [CI / Test JS/Jest]   🐳  docker pull image=node:16-buster-slim platform= username= forcePull=true
+*DRYRUN* [CI / Test JS/Jest]   🐳  docker create image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CI / Test JS/Jest]   🐳  docker run image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Set up job
+*DRYRUN* [CI / Test JS/Jest]   ☁  git clone 'https://github.com/actions/setup-node' # ref=39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+*DRYRUN* [CI / Test JS/Jest]   ☁  git clone 'https://github.com/actions/cache' # ref=1bd1e32a3bdc45362d1e726936510720a7c30a57
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Main Checkout repository
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Main Checkout repository [5.413291ms]
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Main Set up Node.js
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Main Set up Node.js [5.880042ms]
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Main Install npm dependencies
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Main Install npm dependencies [16.523709ms]
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Main Run Jest
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Main Run Jest [17.757417ms]
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Post Set up Node.js
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Post Set up Node.js [4.301542ms]
+*DRYRUN* [CI / Test JS/Jest] ⭐ Run Complete job
+*DRYRUN* [CI / Test JS/Jest] Cleaning up container for job Jest
+*DRYRUN* [CI / Test JS/Jest]   ✅  Success - Complete job
+*DRYRUN* [CI / Test JS/Jest] 🏁  Job succeeded
 ```
 
 ---
