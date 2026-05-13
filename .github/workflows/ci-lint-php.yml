@@ -15,6 +15,10 @@ on:
         description: "PHPCS binary path or custom command."
         type: string
         default: "vendor/bin/phpcs"
+      changed-files:
+        description: "Newline-separated list of PHP files to lint with PHPCS. Empty = lint the whole project. PHPStan always runs whole-project — it analyses cross-file dependencies."
+        type: string
+        default: ""
       phpstan-command:
         description: "Shell command that runs PHPStan."
         type: string
@@ -77,11 +81,24 @@ jobs:
         run: composer install ${{ inputs.composer-flags }}
 
       - name: Run PHPCS
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed-files }}
         run: |
-          ${{ inputs.phpcs-command }} -q --report=checkstyle \
-            --runtime-set ignore_errors_on_exit 1 \
-            --runtime-set ignore_warnings_on_exit 1 \
-            | cs2pr --graceful-warnings
+          if [ -n "$CHANGED_FILES" ]; then
+            tmp_list=$(mktemp)
+            printf '%s\n' "$CHANGED_FILES" > "$tmp_list"
+            ${{ inputs.phpcs-command }} --file-list="$tmp_list" \
+              -q --report=checkstyle \
+              --runtime-set ignore_errors_on_exit 1 \
+              --runtime-set ignore_warnings_on_exit 1 \
+              | cs2pr --graceful-warnings
+          else
+            ${{ inputs.phpcs-command }} -q --report=checkstyle \
+              --runtime-set ignore_errors_on_exit 1 \
+              --runtime-set ignore_warnings_on_exit 1 \
+              | cs2pr --graceful-warnings
+          fi
 
       - name: Run PHPStan
         if: ${{ inputs.enable-phpstan }}

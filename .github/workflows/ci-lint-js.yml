@@ -8,9 +8,13 @@ on:
         type: string
         default: "22"
       lint-command:
-        description: "Shell command that runs ESLint."
+        description: "Shell command that runs ESLint over the whole project. Used when changed-files is empty."
         type: string
         default: "npm run lint:js"
+      changed-files:
+        description: "Newline-separated list of JS files to lint. Empty = run lint-command over the whole project."
+        type: string
+        default: ""
       validate-package-json:
         description: "Run `npm run lint:package-json` before ESLint."
         type: boolean
@@ -48,4 +52,12 @@ jobs:
         run: npm run lint:package-json
 
       - name: Run ESLint
-        run: ${{ inputs.lint-command }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed-files }}
+        run: |
+          if [ -n "$CHANGED_FILES" ]; then
+            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx eslint
+          else
+            ${{ inputs.lint-command }}
+          fi

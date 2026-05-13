@@ -8,9 +8,13 @@ on:
         type: string
         default: "22"
       lint-command:
-        description: "Shell command that runs Stylelint."
+        description: "Shell command that runs Stylelint over the whole project. Used when changed-files is empty."
         type: string
         default: "npm run lint:css"
+      changed-files:
+        description: "Newline-separated list of CSS files to lint. Empty = run lint-command over the whole project."
+        type: string
+        default: ""
       working-dir:
         description: "Working directory for monorepos."
         type: string
@@ -40,4 +44,12 @@ jobs:
         run: npm ci
 
       - name: Run Stylelint
-        run: ${{ inputs.lint-command }}
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed-files }}
+        run: |
+          if [ -n "$CHANGED_FILES" ]; then
+            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx stylelint
+          else
+            ${{ inputs.lint-command }}
+          fi
