@@ -23,12 +23,14 @@ Every rtCamp WordPress project that ships JS or CSS runs the same production bui
 - [2026-05-12] `actions/upload-artifact` pinned to `v4.6.2`, not `v5`/`v6`/`v7`. v4 is the stable major referenced in the planning doc; v5+ introduced breaking changes around upload behaviour that aren't needed here. We can move forward on a future minor when consumers ask for it.
 - [2026-05-12] `upload-artifact` defaults to `false`. The CI-verification path (no upload) is the common case; defaulting to `true` would burn artifact storage on every CI run for callers that don't need it.
 - [2026-05-12] Drive-by fix to `.yamllint.yml` line 14 (bracket spacing) — same starter-kit bug that the lint-trio, ci-test-js, and ci-test-php PRs all touch. Whichever PR merges first wins; later ones hit a one-line conflict.
+- [2026-05-13] Added `install-composer-deps` / `install-node-deps` toggles (+ `php-version`, `composer-flags`) in response to PR review. Both stacks are individually optional — three consumer shapes: Node-only (default), Composer-only, both. `composer-flags` defaults to `--no-dev` (production build, not dev). Node defaults on; Composer defaults off. Backwards-compatible.
 
 ### Action SHA pins recorded
 
 - `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683` — v4.2.2.
 - `actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af` — v4.1.0.
 - `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` — v4.6.2.
+- `shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f` — 2.37.0.
 
 ---
 
@@ -56,17 +58,39 @@ WARN  ⚠ You are using Apple M-series chip and you have not specified container
 *DRYRUN* [CI / Build/Build]   🐳  docker run image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
 *DRYRUN* [CI / Build/Build]   ✅  Success - Set up job
 *DRYRUN* [CI / Build/Build]   ☁  git clone 'https://github.com/actions/setup-node' # ref=39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+*DRYRUN* [CI / Build/Build]   ☁  git clone 'https://github.com/shivammathur/setup-php' # ref=accd6127cb78bee3e8082180cb391013d204ef9f
+*DRYRUN* [CI / Build/Build] Non-terminating error while running 'git clone': some refs were not updated
 *DRYRUN* [CI / Build/Build]   ☁  git clone 'https://github.com/actions/upload-artifact' # ref=ea165f8d65b6e75b540449e92b4886f43607fa02
 *DRYRUN* [CI / Build/Build] ⭐ Run Main Checkout repository
-*DRYRUN* [CI / Build/Build]   ✅  Success - Main Checkout repository [6.052542ms]
-*DRYRUN* [CI / Build/Build] ⭐ Run Main Set up Node.js
-*DRYRUN* [CI / Build/Build]   ✅  Success - Main Set up Node.js [5.587041ms]
-*DRYRUN* [CI / Build/Build] ⭐ Run Main Install npm dependencies
-*DRYRUN* [CI / Build/Build]   ✅  Success - Main Install npm dependencies [14.779ms]
+*DRYRUN* [CI / Build/Build]   ✅  Success - Main Checkout repository [6.2005ms]
 *DRYRUN* [CI / Build/Build] ⭐ Run Main Build production assets
-*DRYRUN* [CI / Build/Build]   ✅  Success - Main Build production assets [14.293167ms]
-*DRYRUN* [CI / Build/Build] ⭐ Run Post Set up Node.js
-*DRYRUN* [CI / Build/Build]   ✅  Success - Post Set up Node.js [4.254167ms]
+*DRYRUN* [CI / Build/Build]   ✅  Success - Main Build production assets [13.612625ms]
+*DRYRUN* [CI / Build/Build] ⭐ Run Complete job
+*DRYRUN* [CI / Build/Build] Cleaning up container for job Build
+*DRYRUN* [CI / Build/Build]   ✅  Success - Complete job
+*DRYRUN* [CI / Build/Build] 🏁  Job succeeded
+❯ act workflow_call -W .github/workflows/ci-build.yml --dryrun \
+    --input install-node-deps=false --input install-composer-deps=true
+INFO[0000] Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock' 
+WARN  ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠  
+*DRYRUN* [CI / Build/Build] ⭐ Run Set up job
+*DRYRUN* [CI / Build/Build] 🚀  Start image=node:16-buster-slim
+*DRYRUN* [CI / Build/Build]   🐳  docker pull image=node:16-buster-slim platform= username= forcePull=true
+*DRYRUN* [CI / Build/Build]   🐳  docker create image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CI / Build/Build]   🐳  docker run image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CI / Build/Build]   ✅  Success - Set up job
+*DRYRUN* [CI / Build/Build]   ☁  git clone 'https://github.com/actions/setup-node' # ref=39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+*DRYRUN* [CI / Build/Build]   ☁  git clone 'https://github.com/shivammathur/setup-php' # ref=accd6127cb78bee3e8082180cb391013d204ef9f
+*DRYRUN* [CI / Build/Build] Non-terminating error while running 'git clone': some refs were not updated
+*DRYRUN* [CI / Build/Build]   ☁  git clone 'https://github.com/actions/upload-artifact' # ref=ea165f8d65b6e75b540449e92b4886f43607fa02
+*DRYRUN* [CI / Build/Build] ⭐ Run Main Checkout repository
+*DRYRUN* [CI / Build/Build]   ✅  Success - Main Checkout repository [5.398708ms]
+*DRYRUN* [CI / Build/Build] ⭐ Run Main Set up PHP
+*DRYRUN* [CI / Build/Build]   ✅  Success - Main Set up PHP [5.585334ms]
+*DRYRUN* [CI / Build/Build] ⭐ Run Main Install Composer dependencies
+*DRYRUN* [CI / Build/Build]   ✅  Success - Main Install Composer dependencies [26.049167ms]
+*DRYRUN* [CI / Build/Build] ⭐ Run Main Build production assets
+*DRYRUN* [CI / Build/Build]   ✅  Success - Main Build production assets [13.907375ms]
 *DRYRUN* [CI / Build/Build] ⭐ Run Complete job
 *DRYRUN* [CI / Build/Build] Cleaning up container for job Build
 *DRYRUN* [CI / Build/Build]   ✅  Success - Complete job
@@ -86,7 +110,9 @@ WARN  ⚠ You are using Apple M-series chip and you have not specified container
 - The `path: ${{ inputs.working-dir }}/${{ inputs.artifact-path }}` composition is the only non-obvious bit. `defaults.run.working-directory` only affects `run:` steps; action inputs (`uses:` blocks) still resolve relative to the repo root. Composing the two inputs here is the cheapest way to keep monorepo callers ergonomic without exposing the GitHub Actions quirk.
 - `if-no-files-found: error` is a deliberate hardening over the planning doc, which didn't mention it. Worth a sanity-check during smoke testing — confirm that misconfiguring `artifact-path` produces a clear failure rather than a silent empty artifact.
 - `actions/upload-artifact` v7.0.1 exists but pins live at v4.6.2. Happy to bump if reviewers prefer staying on the latest major; v4 was chosen for stability and alignment with the planning doc.
-`.yamllint.yml` fix is duplicated across the PRs. Whichever merges first wins; later ones hit a one-line conflict.
+- Default `composer-flags` use `--no-dev` because this is a production-build workflow — different from `ci-lint-php` / `ci-test-php`, which need dev deps (PHPCS, PHPUnit). The inconsistency is deliberate, not a copy-paste oversight.
+- Both stacks are individually toggleable (`install-node-deps`, `install-composer-deps`) because rtCamp consumes this workflow from plugins, themes, AND pure-PHP packages. Defaults reflect the most common case (Node-only). Setting both to `false` runs `build-command` on a bare checkout — degenerate but not broken.
+- `.yamllint.yml` fix is duplicated across the PRs. Whichever merges first wins; later ones hit a one-line conflict.
 
 ---
 

@@ -3,10 +3,26 @@ name: CI / Build
 on:
   workflow_call:
     inputs:
+      install-node-deps:
+        description: "Install Node dependencies before the build."
+        type: boolean
+        default: true
       node-version:
-        description: "Node.js version to install."
+        description: "Node.js version (used only when install-node-deps is true)."
         type: string
         default: "22"
+      install-composer-deps:
+        description: "Install Composer dependencies before the build."
+        type: boolean
+        default: false
+      php-version:
+        description: "PHP version (used only when install-composer-deps is true)."
+        type: string
+        default: "8.3"
+      composer-flags:
+        description: "Flags passed to composer install."
+        type: string
+        default: "--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
       build-command:
         description: "Shell command that produces the production build."
         type: string
@@ -47,12 +63,26 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Node.js
+        if: ${{ inputs.install-node-deps }}
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
 
+      - name: Set up PHP
+        if: ${{ inputs.install-composer-deps }}
+        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          coverage: none
+          tools: composer
+
+      - name: Install Composer dependencies
+        if: ${{ inputs.install-composer-deps }}
+        run: composer install ${{ inputs.composer-flags }}
+
       - name: Install npm dependencies
+        if: ${{ inputs.install-node-deps }}
         run: npm ci
 
       - name: Build production assets
