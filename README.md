@@ -182,6 +182,44 @@ jobs:
 
 Step order is load-bearing: build runs **before** `wp-env start` so pa11y sees compiled CSS/JS. `wp-env stop` uses `if: always()` so a failing pa11y run does not leak a Docker stack into the next job.
 
+## Individual workflows
+
+### `ci-build-artifact-gate.yml` — block committed build artifacts
+
+Fails a PR if it touches any file under the configured path prefixes (default: `assets/build/`). Pair it with `ci-build.yml` so the build output produced by CI is the only source of truth, never a stale tree committed by hand.
+
+```yaml
+# Default — gate assets/build/ in a flat repo
+jobs:
+  artifact-gate:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+
+# Multiple gated paths
+jobs:
+  artifact-gate:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    with:
+      gated-paths: |
+        assets/build/
+        dist/
+        public/build/
+
+# Monorepo — scope the gate to one sub-package
+jobs:
+  artifact-gate:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    with:
+      gated-paths: "assets/build/"
+      working-dir: "packages/admin-ui"
+```
+
+| Input         | Type   | Default           | Description                                                                       |
+| ------------- | ------ | ----------------- | --------------------------------------------------------------------------------- |
+| `gated-paths` | string | `"assets/build/"` | Newline-separated path prefixes whose contents must not be committed in a PR.     |
+| `working-dir` | string | `"."`             | Working directory for monorepos. Path prefixes are anchored under this directory. |
+
+Only meaningful on `pull_request` events — on other triggers it logs a notice and exits 0 so the workflow stays inert outside PRs. The check compares `origin/<base>..HEAD` with `--diff-filter=ACMR`, so deletions are ignored: removing a previously-committed artifact in the PR does not trip the gate.
+
 ## License
 
 GPL-2.0-or-later
