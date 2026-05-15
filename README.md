@@ -33,6 +33,30 @@ jobs:
 
 ## Individual workflows
 
+Each workflow can be called independently, so you can wire them into your own job graph if the orchestrator preset does not fit your setup.
+
+### `ci-test-js.yml` — Jest tests
+
+Runs JavaScript unit tests using Jest. Defaults match the legacy `Test and Measure` workflow, so most consumers do not need to provide any inputs.
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  test-js:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-test-js.yml@v1
+```
+
+Available inputs:
+
+| Workflow | Input | Default |
+|---|---|---|
+| `ci-test-js.yml` | `node-version` | `"22"` |
+| | `test-command` | `npm run test:js -- --ci` |
+| | `enable-cache` | `true` |
+| | `working-dir` | `"."` |
+
 ### `ci-test-a11y.yml` — accessibility tests
 
 Runs `pa11y-ci` against the built site served by `@wordpress/env`. The reusable workflow is trigger-agnostic — wire the `Run a11y` label gate at the caller because a11y runs are slower than the rest of the CI matrix.
