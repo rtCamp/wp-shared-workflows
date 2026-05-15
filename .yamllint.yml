@@ -11,7 +11,7 @@ rules:
 
   # Allow quoted 'on:' to avoid YAML 1.1 truthy pitfalls.
   truthy:
-    allowed-values: [ 'true', 'false', 'on', 'off' ]
+    allowed-values: ['true', 'false', 'on', 'off']
     check-keys: false
 
   # Comments can start at any column.
