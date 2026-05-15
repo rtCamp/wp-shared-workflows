@@ -37,7 +37,7 @@ Each workflow can be called independently, so you can wire them into your own jo
 
 ### `ci-test-js.yml` — Jest tests
 
-Runs JavaScript unit tests using Jest. Defaults match the legacy `Test and Measure` workflow, so most consumers do not need to provide any inputs.
+Runs JavaScript unit tests using Jest with optional transform/result caching across runs.
 
 ```yaml
 # .github/workflows/ci.yml
@@ -46,16 +46,16 @@ on: [push, pull_request]
 jobs:
   test-js:
     uses: rtCamp/shared-workflows/.github/workflows/ci-test-js.yml@v1
+    with:
+      node-version: "22"
 ```
 
-Available inputs:
-
-| Workflow | Input | Default |
-|---|---|---|
-| `ci-test-js.yml` | `node-version` | `"22"` |
-| | `test-command` | `npm run test:js -- --ci` |
-| | `enable-cache` | `true` |
-| | `working-dir` | `"."` |
+| Input          | Type    | Default                    | Description                                      |
+| -------------- | ------- | -------------------------- | ------------------------------------------------ |
+| `node-version` | string  | `"22"`                     | Node.js version to install.                      |
+| `test-command` | string  | `"npm run test:js -- --ci"`| Shell command that runs Jest.                    |
+| `enable-cache` | boolean | `true`                     | Cache Jest transform/result data across runs.    |
+| `working-dir`  | string  | `"."`                      | Working directory for monorepos.                 |
 
 ### `ci-test-a11y.yml` — accessibility tests
 
