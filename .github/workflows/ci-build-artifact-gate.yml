@@ -40,9 +40,8 @@ jobs:
           git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
           PATTERN=$(printf '%s\n' "$GATED_PATHS" \
-            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-            | grep -v '^$' \
-            | sed 's/\./\\./g' \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' \
+            | sed 's/[][\\.|^$()*+?{}]/\\&/g' \
             | paste -sd '|' -)
 
           if [[ -z "$PATTERN" ]]; then

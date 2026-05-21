@@ -188,13 +188,17 @@ Step order is load-bearing: build runs **before** `wp-env start` so pa11y sees c
 
 Fails a PR if it touches any file under the configured path prefixes (default: `assets/build/`). Pair it with `ci-build.yml` so the build output produced by CI is the only source of truth, never a stale tree committed by hand.
 
+**Default — gate `assets/build/` in a flat repo:**
+
 ```yaml
-# Default — gate assets/build/ in a flat repo
 jobs:
   artifact-gate:
     uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+```
 
-# Multiple gated paths
+**Multiple gated paths:**
+
+```yaml
 jobs:
   artifact-gate:
     uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
@@ -203,8 +207,11 @@ jobs:
         assets/build/
         dist/
         public/build/
+```
 
-# Monorepo — scope the gate to one sub-package
+**Monorepo — scope the gate to one sub-package:**
+
+```yaml
 jobs:
   artifact-gate:
     uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
