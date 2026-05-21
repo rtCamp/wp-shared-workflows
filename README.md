@@ -33,6 +33,39 @@ jobs:
 
 ## Individual workflows
 
+### `ci-test-php.yml`: PHPUnit
+
+Runs PHPUnit either against a real WordPress environment via [`@wordpress/env`](https://github.com/WordPress/gutenberg/tree/trunk/packages/env) (default) or standalone for Composer libraries.
+
+**Plugin or theme:** WordPress integration tests via `wp-env` (default).
+
+```yaml
+jobs:
+  test-php:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    with:
+      php-version: "8.3"
+```
+
+**Composer package:** standalone PHPUnit, no Node, no Docker.
+
+```yaml
+jobs:
+  test-php:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    with:
+      php-version: "8.3"
+      use-wp-env: false
+```
+
+| Input            | Type    | Default                                                       | Description                                                                |
+| ---------------- | ------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `php-version`    | string  | `"8.3"`                                                       | PHP version to install.                                                    |
+| `node-version`   | string  | `"22"`                                                        | Node.js version. Consumed only when `use-wp-env: true`.                    |
+| `use-wp-env`     | boolean | `true`                                                        | Start `@wordpress/env` before tests for WordPress integration runs.        |
+| `test-command`   | string  | `""`                                                          | PHPUnit command. Empty means `npm run test:php` in wp-env mode, `vendor/bin/phpunit` standalone. |
+| `composer-flags` | string  | `"--no-interaction --prefer-dist --no-progress --no-scripts"` | Flags passed to `composer install`. Keep `--no-scripts` for supply-chain hygiene. |
+| `working-dir`    | string  | `"."`                                                         | Working directory for monorepos.                                           |
 Each workflow can be called independently, so you can wire them into your own job graph if the orchestrator preset does not fit your setup.
 
 ### `ci-test-js.yml` — Jest tests
