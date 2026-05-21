@@ -24,9 +24,9 @@ on:
         type: string
         default: "--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
       build-command:
-        description: "Shell command that produces the production build."
+        description: "Shell command that produces the production build. When empty, defaults to 'npm run build:prod' if install-node-deps is true, otherwise 'composer run-script build'."
         type: string
-        default: "npm run build:prod"
+        default: ""
       upload-artifact:
         description: "Upload the build output as a GitHub Actions artifact for downstream jobs."
         type: boolean
@@ -86,7 +86,7 @@ jobs:
         run: npm ci
 
       - name: Build production assets
-        run: ${{ inputs.build-command }}
+        run: ${{ inputs.build-command != '' && inputs.build-command || (inputs.install-node-deps && 'npm run build:prod' || 'composer run-script build') }}
 
       - name: Upload build artifact
         if: ${{ inputs.upload-artifact }}
