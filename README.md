@@ -33,6 +33,71 @@ jobs:
 
 ## Individual workflows
 
+### `ci-build.yml`: production build
+
+Runs the consumer's production build, with an optional artifact upload for downstream CD jobs. Default shape is build-only (no artifact written).
+
+**Node-only build (default):** frontend-heavy plugin or theme.
+
+```yaml
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      node-version: "22"
+```
+
+**Node-only build with artifact upload:** hand the output to a downstream CD job.
+
+```yaml
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      node-version: "22"
+      upload-artifact: true
+```
+
+**Node + Composer:** plugin that ships `vendor/` alongside compiled JS.
+
+```yaml
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      node-version: "22"
+      install-composer-deps: true
+      php-version: "8.3"
+      upload-artifact: true
+```
+
+**Composer-only:** pure PHP package, no JS toolchain.
+
+```yaml
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      install-node-deps: false
+      install-composer-deps: true
+      php-version: "8.3"
+```
+
+| Input                   | Type    | Default                                                                                      | Description                                                                            |
+| ----------------------- | ------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `install-node-deps`     | boolean | `true`                                                                                       | Install Node dependencies before the build.                                            |
+| `node-version`          | string  | `"22"`                                                                                       | Node.js version (used only when `install-node-deps` is true).                          |
+| `install-composer-deps` | boolean | `false`                                                                                      | Install Composer dependencies before the build.                                        |
+| `php-version`           | string  | `"8.3"`                                                                                      | PHP version (used only when `install-composer-deps` is true).                          |
+| `composer-flags`        | string  | `"--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"` | Flags passed to `composer install`.                                                    |
+| `build-command`         | string  | `""`                                                                                         | Build command. Empty means `npm run build:prod` when `install-node-deps` is true, otherwise `composer run-script build`. |
+| `upload-artifact`       | boolean | `false`                                                                                      | Upload the build output as a GitHub Actions artifact for downstream jobs.              |
+| `artifact-name`         | string  | `"build"`                                                                                    | Artifact name. Must match the name in the downstream `actions/download-artifact` step. |
+| `artifact-path`         | string  | `"build/"`                                                                                   | Path to upload. Resolved as `working-dir/artifact-path`.                               |
+| `retention-days`        | number  | `7`                                                                                          | Days to keep the artifact before GitHub deletes it.                                    |
+| `working-dir`           | string  | `"."`                                                                                        | Working directory for monorepos.                                                       |
+
+A misconfigured `artifact-path` fails loudly via `if-no-files-found: error`. No silent empty artifacts.
 ### `ci-test-php.yml`: PHPUnit
 
 Runs PHPUnit either against a real WordPress environment via [`@wordpress/env`](https://github.com/WordPress/gutenberg/tree/trunk/packages/env) (default) or standalone for Composer libraries.
