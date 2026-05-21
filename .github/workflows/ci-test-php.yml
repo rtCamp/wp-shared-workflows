@@ -16,9 +16,9 @@ on:
         type: boolean
         default: true
       test-command:
-        description: "Shell command that runs PHPUnit."
+        description: "Shell command that runs PHPUnit. When empty, defaults to 'npm run test:php' if use-wp-env is true, otherwise 'vendor/bin/phpunit'."
         type: string
-        default: "npm run test:php"
+        default: ""
       composer-flags:
         description: "Flags passed to composer install."
         type: string
@@ -68,7 +68,7 @@ jobs:
         run: npm run wp-env start
 
       - name: Run PHPUnit
-        run: ${{ inputs.test-command }}
+        run: ${{ inputs.test-command != '' && inputs.test-command || (inputs.use-wp-env && 'npm run test:php' || 'vendor/bin/phpunit') }}
 
       - name: Stop wp-env
         if: ${{ inputs.use-wp-env && always() }}
