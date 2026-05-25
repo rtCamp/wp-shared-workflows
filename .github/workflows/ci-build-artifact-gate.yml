@@ -1,0 +1,73 @@
+name: CI / Build Artifact Gate
+
+on:
+  workflow_call:
+    inputs:
+      gated-paths:
+        description: "Newline-separated path prefixes whose contents must not be committed in a PR."
+        type: string
+        default: "assets/build/"
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  build-artifact-gate:
+    name: Block committed build artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Detect committed build artifacts
+        shell: bash
+        env:
+          GATED_PATHS: ${{ inputs.gated-paths }}
+          WORKING_DIR: ${{ inputs.working-dir }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$BASE_REF" ]]; then
+            echo "::notice::Not a pull_request event (no base ref); skipping gate."
+            exit 0
+          fi
+
+          git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
+          PATTERN=$(printf '%s\n' "$GATED_PATHS" \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' \
+            | sed 's/[][\\.|^$()*+?{}]/\\&/g' \
+            | paste -sd '|' -)
+
+          if [[ -z "$PATTERN" ]]; then
+            echo "::notice::No gated paths configured; skipping."
+            exit 0
+          fi
+
+          WORKING_DIR="${WORKING_DIR%/}"
+          if [[ -n "$WORKING_DIR" && "$WORKING_DIR" != "." ]]; then
+            ANCHORED="^${WORKING_DIR}/(${PATTERN})"
+          else
+            ANCHORED="^(${PATTERN})"
+          fi
+
+          echo "Comparing origin/${BASE_REF}..HEAD against pattern: ${ANCHORED}"
+
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/${BASE_REF}..HEAD" \
+            | grep -E "${ANCHORED}" || true)
+
+          if [[ -n "$CHANGED" ]]; then
+            echo "::error::Build artifacts must not be committed. Offending files:"
+            printf '%s\n' "$CHANGED" | sed 's/^/  - /'
+            echo
+            echo "These paths are produced by CI on merge. Remove them from the PR"
+            echo "(e.g. 'git rm --cached <file>') and ensure they are gitignored."
+            exit 1
+          fi
+
+          echo "No committed build artifacts detected."
