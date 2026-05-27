@@ -1,0 +1,84 @@
+name: Version Monitor
+
+on:
+  workflow_call:
+    inputs:
+      base-branch:
+        description: "Branch to open the PR against"
+        type: string
+        default: "main"
+      pr-label:
+        description: "Label to apply to the draft PR"
+        type: string
+        default: "version-monitor"
+      pr-assignees:
+        description: "Comma-separated GitHub usernames to assign to the draft PR"
+        type: string
+        default: ""
+
+jobs:
+  version-monitor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify version-monitor config present
+        run: |
+          if [ ! -f ".github/version-monitor.yml" ]; then
+            echo "::error::.github/version-monitor.yml not found in caller repo. See README for required config shape."
+            exit 1
+          fi
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+
+      - name: Install wp-tooling
+        # TODO(wp-tooling#10): switch to published package: npm install --global @rtcamp/wp-tooling
+        run: npm install --global "git+https://github.com/rtCamp/wp-tooling.git#v1.0.0/task/version-monitor-scripts"
+
+      - name: Detect version updates
+        id: detect
+        run: |
+          wp-tooling version-monitor --detect > updates.json
+          COUNT=$(jq 'length' updates.json)
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Skip — no updates this month
+        if: steps.detect.outputs.count == '0'
+        run: echo "No updates detected this month. Exiting cleanly."
+
+      - name: Set monthly branch name
+        if: steps.detect.outputs.count != '0'
+        id: monthly
+        run: |
+          MONTH=$(date +%Y-%m)
+          echo "branch=version-monitor/$MONTH" >> "$GITHUB_OUTPUT"
+          echo "month=$MONTH" >> "$GITHUB_OUTPUT"
+
+      - name: Apply updates and generate PR report
+        if: steps.detect.outputs.count != '0'
+        run: |
+          wp-tooling version-monitor --apply < updates.json
+          wp-tooling version-monitor --report < updates.json > pr-body.md
+
+      - name: Open or update draft PR
+        if: steps.detect.outputs.count != '0'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.monthly.outputs.branch }}
+          base: ${{ inputs.base-branch }}
+          title: "chore(deps): monthly version monitor — ${{ steps.monthly.outputs.month }}"
+          body-path: pr-body.md
+          draft: true
+          labels: ${{ inputs.pr-label }}
+          assignees: ${{ inputs.pr-assignees }}
+          commit-message: "chore(deps): monthly version monitor — ${{ steps.monthly.outputs.month }}"
