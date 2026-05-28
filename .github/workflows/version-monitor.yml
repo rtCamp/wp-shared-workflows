@@ -24,7 +24,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
@@ -36,19 +36,19 @@ jobs:
           fi
 
       - name: Setup Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
       - name: Install wp-tooling
         # TODO(wp-tooling#10): switch to published package: npm install --global @rtcamp/wp-tooling
-        run: npm install --global "git+https://github.com/rtCamp/wp-tooling.git#v1.0.0/task/version-monitor-scripts"
+        run: npm install --global "git+https://github.com/rtCamp/wp-tooling.git"
 
       - name: Detect version updates
         id: detect
         run: |
-          wp-tooling version-monitor --detect > updates.json
-          COUNT=$(jq 'length' updates.json)
+          wp-tooling version-monitor --detect > "$RUNNER_TEMP/updates.json"
+          COUNT=$(jq 'length' "$RUNNER_TEMP/updates.json")
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Skip — no updates this month
@@ -66,18 +66,18 @@ jobs:
       - name: Apply updates and generate PR report
         if: steps.detect.outputs.count != '0'
         run: |
-          wp-tooling version-monitor --apply < updates.json
-          wp-tooling version-monitor --report < updates.json > pr-body.md
+          wp-tooling version-monitor --apply < "$RUNNER_TEMP/updates.json"
+          wp-tooling version-monitor --report < "$RUNNER_TEMP/updates.json" > "$RUNNER_TEMP/pr-body.md"
 
       - name: Open or update draft PR
         if: steps.detect.outputs.count != '0'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8.1.1
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ steps.monthly.outputs.branch }}
           base: ${{ inputs.base-branch }}
           title: "chore(deps): monthly version monitor — ${{ steps.monthly.outputs.month }}"
-          body-path: pr-body.md
+          body-path: ${{ runner.temp }}/pr-body.md
           draft: true
           labels: ${{ inputs.pr-label }}
           assignees: ${{ inputs.pr-assignees }}
