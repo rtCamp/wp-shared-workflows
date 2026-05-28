@@ -227,6 +227,56 @@ jobs:
 
 Only meaningful on `pull_request` events. On other triggers it logs a notice and exits 0 so the workflow stays inert outside PRs. The check compares `origin/<base>..HEAD` with `--diff-filter=ACMR`, so deletions are ignored: removing a previously-committed artifact in the PR does not trip the gate.
 
+### `ci-test-build-artifact.yml`: boot the built artifact
+
+A green `ci-build.yml` run only proves the build did not crash — not that the packaged output installs and boots. This workflow downloads the artifact, boots a real WordPress in [`@wordpress/env`](https://github.com/WordPress/gutenberg/tree/trunk/packages/env), activates the plugin/theme, and runs `wp doctor`. It catches PHP files referenced but never copied into the bundle, an over-eager `.distignore`, and path-cased files that break on Linux. Pair it with `ci-build.yml`.
+
+**Plugin:** build with an uploaded artifact, then boot it.
+
+```yaml
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: "plugin-dist"
+      artifact-path: "dist/my-plugin/"   # a complete installable plugin dir, not bare build/
+  test-artifact:
+    needs: build
+    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    with:
+      artifact-name: "plugin-dist"
+      slug: "my-plugin"
+```
+
+**Theme:** install under `wp-content/themes` and activate as a theme.
+
+```yaml
+jobs:
+  test-artifact:
+    needs: build
+    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    with:
+      artifact-name: "theme-dist"
+      slug: "my-theme"
+      install-path: "wp-content/themes"
+```
+
+| Input           | Type   | Default               | Description                                                                                       |
+| --------------- | ------ | --------------------- | ------------------------------------------------------------------------------------------------- |
+| `artifact-name` | string | _required_            | Artifact to download. Must match the `artifact-name` uploaded by `ci-build.yml` in the same run.   |
+| `slug`          | string | _required_            | Plugin or theme directory slug to activate.                                                        |
+| `node-version`  | string | `"22"`                | Node.js version used to run `@wordpress/env`.                                                      |
+| `php-version`   | string | `"8.3"`               | PHP version wp-env boots with.                                                                     |
+| `wp-version`    | string | `"latest"`            | WordPress version wp-env boots with. `latest` uses the newest stable release.                      |
+| `install-path`  | string | `"wp-content/plugins"`| Destination under the WordPress root. A path ending in `themes` activates a theme, else a plugin.  |
+| `smoke-script`  | string | `""`                  | Optional path inside the artifact to a shell script, run in the container after activation.        |
+| `doctor-ignore-checks` | string | `"constant-wp-debug-falsy"` | Comma-separated `wp doctor` check names excluded from the error gate (production-oriented checks that wp-env's dev defaults always trip). |
+
+`wp doctor check --all` includes production-oriented checks that a dev wp-env always trips — notably `constant-wp-debug-falsy`, because wp-env enables `WP_DEBUG` by default. Those are excluded from the gate via `doctor-ignore-checks` (extend the comma-separated list if your wp-env config trips others); every other `error`-severity check still fails the build.
+
+The artifact must be a **complete installable plugin/theme directory** (main PHP file plus assets), so point `ci-build.yml`'s `artifact-path` at a packaged dist directory, not bare `build/`. `actions/download-artifact` restores the uploaded directory contents uncompressed, so there is no unzip step. The workflow writes a `.wp-env.override.json` that pins `phpVersion`/`core` and mounts **only** the downloaded artifact — it clears `plugins`/`themes` from the consumer's `.wp-env.json` so the test reflects the packaged output in isolation, not the dev source tree. It then runs `wp <plugin|theme> activate <slug>` and `wp doctor check --all` (failing only on `error` severity), and always runs `wp-env stop` so no container leaks into the next job.
+
 ## License
 
 GPL-2.0-or-later
