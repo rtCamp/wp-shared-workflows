@@ -36,15 +36,29 @@ Tagging a release should produce a Git tag, a GitHub Release carrying the change
 ## Verification run
 
 ```bash
-$ yamllint .                       # exit 0 (via pipx)
-$ act workflow_call -W .github/workflows/cd-github-release.yml --dryrun
-  ✅ Checkout → Download release artifact → Extract changelog section → Create GitHub Release → Job succeeded
-
-# changelog parser unit-check (awk, TAG=v1.2.3 against a fixture):
-#   ## v1.2.3   → body extracted
-#   ## [1.2.3]  → body extracted
-#   ## Unreleased / ## v1.2.30 → not matched
-#   empty / absent section → exit 1
+❯ pipx run yamllint .
+❯ act workflow_call -W .github/workflows/cd-github-release.yml --dryrun
+INFO[0000] Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock' 
+WARN  ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠  
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] ⭐ Run Set up job
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] 🚀  Start image=node:16-buster-slim
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   🐳  docker pull image=node:16-buster-slim platform= username= forcePull=true
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   🐳  docker create image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   🐳  docker run image=node:16-buster-slim platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ✅  Success - Set up job
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ☁  git clone 'https://github.com/actions/download-artifact' # ref=d3f86a106a0bac45b974a628896c90dbdf5c8093
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] ⭐ Run Main Checkout repository
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ✅  Success - Main Checkout repository [8.740416ms]
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] ⭐ Run Main Download release artifact
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ✅  Success - Main Download release artifact [7.706667ms]
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] ⭐ Run Main Extract changelog section
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ✅  Success - Main Extract changelog section [19.298167ms]
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] ⭐ Run Main Create GitHub Release
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ✅  Success - Main Create GitHub Release [19.135125ms]
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] ⭐ Run Complete job
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] Cleaning up container for job Publish GitHub Release
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release]   ✅  Success - Complete job
+*DRYRUN* [CD / GitHub Release/Publish GitHub Release] 🏁  Job succeeded
 ```
 
 All pass. `## v1.2.3` and `## [1.2.3]` extract the right body; `## Unreleased` and `## v1.2.30` are not matched for tag `v1.2.3`; a tag with no section returns empty → exit 1. (A degenerate `tag: vUnreleased` would match `## Unreleased`, but a `v*.*.*` trigger can never produce that, so no special-casing.)
