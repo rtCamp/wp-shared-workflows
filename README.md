@@ -277,6 +277,78 @@ jobs:
 
 The artifact must be a **complete installable plugin/theme directory** (main PHP file plus assets), so point `ci-build.yml`'s `artifact-path` at a packaged dist directory, not bare `build/`. `actions/download-artifact` restores the uploaded directory contents uncompressed, so there is no unzip step. The workflow writes a `.wp-env.override.json` that pins `phpVersion`/`core` and mounts **only** the downloaded artifact — it clears `plugins`/`themes` from the consumer's `.wp-env.json` so the test reflects the packaged output in isolation, not the dev source tree. It then runs `wp <plugin|theme> activate <slug>` and `wp doctor check --all` (failing only on `error` severity), and always runs `wp-env stop` so no container leaks into the next job.
 
+### `cd-s3.yml`: S3 deploy
+
+Distributes a private / customer plugin by uploading the build artifact to an S3 bucket on a release tag — a versioned object (`<prefix><tag>.zip`) plus a rolling `<prefix>latest.zip` that always overwrites — and optionally invalidates a CloudFront distribution so the new `latest.zip` is served immediately. Uses the official [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) (SHA-pinned) and the preinstalled AWS CLI.
+
+```yaml
+# .github/workflows/deploy-s3.yml in the consumer
+name: Deploy to S3
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: read
+  artifact-name: s3-build
+      # build-command / artifact-path must produce one .zip in the artifact.
+  deploy:
+    needs: build
+    uses: rtCamp/shared-workflows/.github/workflows/cd-s3.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+      artifact-name: s3-build
+      bucket: my-customer-bucket
+      prefix: "plugins/my-plugin/"
+      # cloudfront-distribution-id: "E123ABC"   # optional
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+```
+
+The full copy-paste caller lives at [`.github/workflows/_examples/caller-cd-s3.yml`](.github/workflows/_examples/caller-cd-s3.yml).
+
+| Input                        | Type   | Default       | Description                                                              |
+| ---------------------------- | ------ | ------------- | ------------------------------------------------------------------------ |
+| `tag`                        | string | —             | **Required.** Release tag; the versioned object is keyed `<prefix><tag>.zip`. |
+| `artifact-name`              | string | —             | **Required.** Build artifact to download (must match the producer).      |
+| `bucket`                     | string | —             | **Required.** Target S3 bucket name.                                     |
+| `prefix`                     | string | `""`          | Optional S3 key prefix, e.g. `plugins/myplugin/` (include the trailing slash). |
+| `cloudfront-distribution-id` | string | `""`          | If set, invalidate `/<prefix>*` on this distribution after upload.       |
+| `region`                     | string | `"us-east-1"` | AWS region of the bucket.                                                |
+
+| Secret                  | Required | Description                      |
+| ----------------------- | -------- | -------------------------------- |
+| `AWS_ACCESS_KEY_ID`     | yes      | AWS access key id (see IAM below). |
+| `AWS_SECRET_ACCESS_KEY` | yes      | AWS secret access key.           |
+
+**Required IAM permissions.** The credentials need write access to the prefix, plus
+`cloudfront:CreateInvalidation` only if you pass a distribution id:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::my-customer-bucket/plugins/my-plugin/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::<account-id>:distribution/E123ABC"
+    }
+  ]
+}
+```
+
+Notes:
+
+- **Same-run artifact** — `actions/download-artifact` only sees the current run's artifacts, so build and deploy must run in the same workflow (`deploy` `needs: build`), and the artifact must contain exactly one `.zip`.
+- **Bucket region** should match `region`; otherwise `aws s3 cp` issues a redirect and runs slower.
+- **Pre-existing infra** — the bucket and (if used) the CloudFront distribution must already exist; this workflow does not create or configure them.
+- **`latest.zip` is CloudFront-cached** — the invalidation step is what makes "always-latest" actually serve the new build.
+
 ## License
 
 GPL-2.0-or-later
