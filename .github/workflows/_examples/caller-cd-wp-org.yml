@@ -1,0 +1,36 @@
+# Reference caller for cd-wp-org.yml — copy into a plugin repo as
+# .github/workflows/deploy-wp-org.yml. Lives in _examples/ (a subdirectory) so GitHub
+# never auto-runs it: only files at the top of .github/workflows/ are discovered.
+name: Deploy to WordPress.org
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+# Only checkout reads the repo; the SVN deploy authenticates with the secrets below.
+permissions:
+  contents: read
+
+jobs:
+  # Build and upload the shippable plugin files in the SAME run — download-artifact
+  # only sees the current run's artifacts. The artifact root must contain readme.txt.
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: wp-org-build
+      # Override build-command / artifact-path so the artifact root holds the
+      # shippable plugin files (readme.txt at the top). See the ci-build.yml docs.
+
+  deploy:
+    needs: build
+    uses: rtCamp/shared-workflows/.github/workflows/cd-wp-org.yml@v1
+    with:
+      slug: my-plugin
+      tag: ${{ github.ref_name }}
+      artifact-name: wp-org-build
+      # assets-path: ".wordpress-org"   # default; override if assets live elsewhere
+      # dry-run: true                   # test without committing to SVN
+    secrets:
+      WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME }}
+      WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD }}
