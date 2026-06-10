@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
 
           if [[ ! -f "$CONFIG_FILE" ]]; then
-            echo "::error::Config file '$CONFIG_FILE' not found at the repo root."
+            echo "::error::Config file '$CONFIG_FILE' not found (path is relative to the repo root)."
             exit 1
           fi
 
