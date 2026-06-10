@@ -71,7 +71,9 @@ jobs:
             exit 1
           fi
           if [ ${#zips[@]} -gt 1 ]; then
-            echo "::warning::Multiple .zip files in the artifact; using ${zips[0]}"
+            echo "::error::Multiple .zip files found in the downloaded artifact; expected exactly one."
+            printf '  - %s\n' "${zips[@]}"
+            exit 1
           fi
           src="${zips[0]}"
           aws s3 cp "$src" "s3://${BUCKET}/${PREFIX}${TAG}.zip"
