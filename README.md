@@ -227,7 +227,7 @@ jobs:
 
 Only meaningful on `pull_request` events. On other triggers it logs a notice and exits 0 so the workflow stays inert outside PRs. The check compares `origin/<base>..HEAD` with `--diff-filter=ACMR`, so deletions are ignored: removing a previously-committed artifact in the PR does not trip the gate.
 
-### `cd-split-packages.yml`: split Composer packages to mirror repos
+### `cd-split-composer-packages.yml`: split Composer packages to mirror repos
 
 Splits Composer-package subtrees out of a monorepo into standalone mirror repos (the Symfony "monorepo split" pattern), so Packagist can serve each package from its own repository. A `splitsh.json` at the repo root is the single source of truth — to add or remove a package, edit that file, never the workflow.
 
@@ -260,7 +260,7 @@ on:
     tags: ["v*"]
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-packages.yml@v1
+    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       tag: ${{ github.ref_name }}
     secrets:
@@ -283,7 +283,7 @@ on:
         default: "v0.0.0-test"
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-packages.yml@v1
+    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       # Manual run → use the dispatch input; tag push → the pushed tag.
       tag: ${{ github.event.inputs.test_tag || github.ref_name }}

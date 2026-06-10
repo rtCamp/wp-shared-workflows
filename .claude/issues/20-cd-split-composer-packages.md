@@ -1,7 +1,7 @@
-# Issue #20 — Add cd-split-packages reusable workflow (monorepo → mirror repos)
+# Issue #20 — Add cd-split-composer-packages reusable workflow (monorepo → mirror repos)
 
 **Status:** in-review
-**Branch:** `v1.0.0/task/cd-split-packages`
+**Branch:** `v1.0.0/task/cd-split-composer-packages`
 **PR:** #21
 **Assignee:** @Adi-ty
 
@@ -22,14 +22,14 @@ rtCamp's tooling lives in a monorepo, but Packagist serves each Composer package
 - [2026-05-25] Triggers move to the caller (a reusable workflow owns none). Tag resolution: explicit `tag` input wins, else `github.ref_name`. The `ref_name` fallback only covers the tag-push case — on `workflow_dispatch` `ref_name` is a branch, so the caller must pass the tag from its own dispatch input. Documented both caller shapes in the README.
 - [2026-05-25] Hardening beyond the reference: fail loudly on missing config file / invalid JSON / empty `subtrees` (jq `// {}` guard avoids a null-deref on missing `subtrees`).
 - [2026-05-25] Every action pinned to a commit SHA with a version comment: `actions/checkout@11bd719` (v4.2.2, matching the rest of the repo), `danharrin/monorepo-split-github-action@14e42e2` (v2.4.5, resolved from the tag).
-- [2026-05-25] Named `cd-split-packages.yml` to sit in the CD family.
+- [2026-05-25] Named `cd-split-composer-packages.yml` to sit in the CD family.
 
 ---
 
 ## Files changed so far
 
-- `.github/workflows/cd-split-packages.yml` — new
-- `README.md` — edited (new `cd-split-packages.yml` section: config shape, tag-push + dispatch caller examples, inputs + secret tables)
+- `.github/workflows/cd-split-composer-packages.yml` — new
+- `README.md` — edited (new `cd-split-composer-packages.yml` section: config shape, tag-push + dispatch caller examples, inputs + secret tables)
 - `CHANGELOG.md` — edited (Unreleased entry)
 
 ---
@@ -37,7 +37,7 @@ rtCamp's tooling lives in a monorepo, but Packagist serves each Composer package
 ## Verification run
 
 ```bash
-❯ act workflow_call -W .github/workflows/cd-split-packages.yml --dryrun
+❯ act workflow_call -W .github/workflows/cd-split-composer-packages.yml --dryrun
 INFO[0000] Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock' 
 WARN  ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠  
 *DRYRUN* [CD / Split Composer Packages/Build split matrix from config] ⭐ Run Set up job
