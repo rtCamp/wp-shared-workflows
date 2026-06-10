@@ -70,18 +70,25 @@ jobs:
 
           # Normalise both the shorthand string form ("composer-packages/foo")
           # and the object form ({ "prefixes": [{ "from": "..." }] }).
-          matrix=$(jq -c '{
+          if ! matrix=$(jq -c '{
             include: [
-              .subtrees // {} | to_entries[] | {
+              (.subtrees // {}) | to_entries[] | {
                 mirror_repo: .key,
                 package_directory: (
                   if (.value | type) == "string" then .value
-                  else .value.prefixes[0].from
+                  elif ((.value | type) == "object")
+                       and ((.value.prefixes | type) == "array")
+                       and ((.value.prefixes | length) > 0)
+                       and ((.value.prefixes[0].from | type) == "string") then .value.prefixes[0].from
+                  else error("invalid subtrees entry for \"" + .key + "\": expected a string path or { prefixes: [{ from: \"...\" }] }")
                   end
                 )
               }
             ]
-          }' "$CONFIG_FILE")
+          }' "$CONFIG_FILE"); then
+            echo "::error::Invalid 'subtrees' entry in '$CONFIG_FILE' — each value must be a string path or { prefixes: [{ from: \"...\" }] } (see jq error above)."
+            exit 1
+          fi
 
           count=$(jq -r '.include | length' <<<"$matrix")
           if [[ "$count" -eq 0 ]]; then
@@ -95,12 +102,24 @@ jobs:
             tag="${{ github.ref_name }}"
           fi
 
+          # `// empty` turns a missing/null key into an empty string instead
+          # of the literal "null", so the presence check below actually works.
+          organization=$(jq -r '.organization        // empty' "$CONFIG_FILE")
+          branch=$(jq       -r '.defaults.branch     // empty' "$CONFIG_FILE")
+          user_name=$(jq    -r '.defaults.user_name  // empty' "$CONFIG_FILE")
+          user_email=$(jq   -r '.defaults.user_email // empty' "$CONFIG_FILE")
+
+          if [[ -z "$organization" || -z "$branch" || -z "$user_name" || -z "$user_email" ]]; then
+            echo "::error::Missing required keys in '$CONFIG_FILE' — organization, defaults.branch, defaults.user_name and defaults.user_email must all be set."
+            exit 1
+          fi
+
           {
             echo "matrix=$matrix"
-            echo "organization=$(jq -r '.organization'      "$CONFIG_FILE")"
-            echo "branch=$(jq      -r '.defaults.branch'     "$CONFIG_FILE")"
-            echo "user_name=$(jq   -r '.defaults.user_name'  "$CONFIG_FILE")"
-            echo "user_email=$(jq  -r '.defaults.user_email' "$CONFIG_FILE")"
+            echo "organization=$organization"
+            echo "branch=$branch"
+            echo "user_name=$user_name"
+            echo "user_email=$user_email"
             echo "tag=$tag"
           } >> "$GITHUB_OUTPUT"
 
