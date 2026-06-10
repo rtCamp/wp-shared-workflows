@@ -229,7 +229,7 @@ Only meaningful on `pull_request` events. On other triggers it logs a notice and
 
 ### `cd-split-composer-packages.yml`: split Composer packages to mirror repos
 
-Splits Composer-package subtrees out of a monorepo into standalone mirror repos (the Symfony "monorepo split" pattern), so Packagist can serve each package from its own repository. A `splitsh.json` at the repo root is the single source of truth — to add or remove a package, edit that file, never the workflow.
+Splits Composer-package subtrees out of a monorepo into standalone mirror repos (the Symfony "monorepo split" pattern), so Packagist can serve each package from its own repository. A `splitsh.json` (by default at the repo root) is the single source of truth — to add or remove a package, edit that file, never the workflow.
 
 `splitsh.json` lives in the **calling** monorepo (e.g. `wp-tooling`), not in this repo. As a reusable workflow, `actions/checkout` pulls the caller's repository by default, so the config is read from the caller's checkout — `config-file` is a path relative to that checkout, never the file's contents.
 
