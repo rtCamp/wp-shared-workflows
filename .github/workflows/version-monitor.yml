@@ -20,9 +20,16 @@ on:
         type: string
         default: ""
 
+# Serialise runs per consumer repo so a scheduled run and a manual dispatch can't
+# race on the same version-monitor/YYYY-MM branch.
+concurrency:
+  group: version-monitor-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   version-monitor:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
@@ -50,6 +57,11 @@ jobs:
 
       - name: Detect version updates
         id: detect
+        # Detectors that hit the GitHub API (actions, etc.) read GITHUB_TOKEN to
+        # avoid the unauthenticated 60/hour shared-runner rate limit; Actions does
+        # not export it to run steps automatically, so map it here.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # --detect prints valid (maybe partial) JSON, then exits 1 if a detector
           # errored. Capture the status so `bash -e` can't abort and drop results.
