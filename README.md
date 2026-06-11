@@ -227,6 +227,80 @@ jobs:
 
 Only meaningful on `pull_request` events. On other triggers it logs a notice and exits 0 so the workflow stays inert outside PRs. The check compares `origin/<base>..HEAD` with `--diff-filter=ACMR`, so deletions are ignored: removing a previously-committed artifact in the PR does not trip the gate.
 
+### `cd-split-composer-packages.yml`: split Composer packages to mirror repos
+
+Splits Composer-package subtrees out of a monorepo into standalone mirror repos (the Symfony "monorepo split" pattern), so Packagist can serve each package from its own repository. A `splitsh.json` (by default at the repo root) is the single source of truth — to add or remove a package, edit that file, never the workflow.
+
+`splitsh.json` lives in the **calling** monorepo (e.g. `wp-tooling`), not in this repo. As a reusable workflow, `actions/checkout` pulls the caller's repository by default, so the config is read from the caller's checkout — `config-file` is a path relative to that checkout, never the file's contents.
+
+`splitsh.json`:
+
+```json
+{
+  "organization": "rtCamp",
+  "subtrees": {
+    "wp-phpcs": "composer-packages/phpcs",
+    "wp-phpstan": "composer-packages/phpstan"
+  },
+  "defaults": {
+    "branch": "main",
+    "user_name": "github-actions[bot]",
+    "user_email": "github-actions[bot]@users.noreply.github.com"
+  }
+}
+```
+
+Caller — split on every `v*` tag push:
+
+```yaml
+# .github/workflows/split.yml in the monorepo
+name: Split Composer Packages
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  split:
+    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      split-token: ${{ secrets.SPLIT_TOKEN }}
+```
+
+The reusable workflow owns no trigger of its own — the caller decides when it runs. To also allow a manual smoke-test run (the `workflow_dispatch` path the standalone version had), add the trigger and pass the tag through. On a manual run `github.ref_name` is a **branch**, not a tag, so the dispatch input must win:
+
+```yaml
+# .github/workflows/split.yml in the monorepo
+name: Split Composer Packages
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      test_tag:
+        description: "Throwaway tag to push to mirrors (e.g. v0.0.0-test)"
+        required: true
+        default: "v0.0.0-test"
+jobs:
+  split:
+    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    with:
+      # Manual run → use the dispatch input; tag push → the pushed tag.
+      tag: ${{ github.event.inputs.test_tag || github.ref_name }}
+    secrets:
+      split-token: ${{ secrets.SPLIT_TOKEN }}
+```
+
+| Input         | Type   | Default          | Description                                                                              |
+| ------------- | ------ | ---------------- | ---------------------------------------------------------------------------------------- |
+| `tag`         | string | `""`             | Tag to push to the mirror repos. When empty, falls back to the caller's `github.ref_name`. |
+| `config-file` | string | `"splitsh.json"` | Path to the splitsh config file, relative to the repo root.                              |
+
+| Secret        | Required | Description                                                                                            |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `split-token` | yes      | Token (fine-grained PAT or GitHub App token) with `contents: write` on every mirror repo in the config. |
+
+The `subtrees` map accepts both the shorthand string form (`"mirror": "path/in/monorepo"`) and the object form (`"mirror": { "prefixes": [{ "from": "path" }] }`). Each subtree is force-pushed to its mirror in parallel with `fail-fast: false`, so one failing package does not abort the rest. A missing or empty config fails the run loudly.
 ### `ci-test-build-artifact.yml`: boot the built artifact
 
 A green `ci-build.yml` run only proves the build did not crash — not that the packaged output installs and boots. This workflow downloads the artifact, boots a real WordPress in [`@wordpress/env`](https://github.com/WordPress/gutenberg/tree/trunk/packages/env), activates the plugin/theme, and runs `wp doctor`. It catches PHP files referenced but never copied into the bundle, an over-eager `.distignore`, and path-cased files that break on Linux. Pair it with `ci-build.yml`.
