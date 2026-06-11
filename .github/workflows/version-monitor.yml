@@ -3,6 +3,10 @@ name: Version Monitor
 on:
   workflow_call:
     inputs:
+      node-version:
+        description: "Node.js version used to install and run wp-tooling"
+        type: string
+        default: "22"
       base-branch:
         description: "Branch to open the PR against"
         type: string
@@ -35,10 +39,10 @@ jobs:
             exit 1
           fi
 
-      - name: Setup Node 22
+      - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
         # TODO(wp-tooling#10): switch to published package: npm install --global @rtcamp/wp-tooling
@@ -47,9 +51,28 @@ jobs:
       - name: Detect version updates
         id: detect
         run: |
+          # --detect prints valid (maybe partial) JSON, then exits 1 if a detector
+          # errored. Capture the status so `bash -e` can't abort and drop results.
+          set +e
           wp-tooling version-monitor --detect > "$RUNNER_TEMP/updates.json"
-          COUNT=$(jq 'length' "$RUNNER_TEMP/updates.json")
-          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          status=$?
+          set -e
+
+          # `jq -e` (plain jq exits 0 on an empty file) fails when detect emitted no
+          # JSON at all — a usage/config error or a throw, so there's nothing to do.
+          if ! count=$(jq -e 'length' "$RUNNER_TEMP/updates.json" 2>/dev/null); then
+            echo "::error::version-monitor --detect produced no valid JSON (exit ${status}). Cannot continue."
+            exit 1
+          fi
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+
+          # Partial results: proceed to a PR, but record it to fail the job at the end.
+          if [ "${status}" -ne 0 ]; then
+            echo "detectors_errored=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::version-monitor: one or more detectors errored (exit ${status}); proceeding with ${count} partial result(s). The run will be marked failed so the blind source is investigated — see this step's log for details."
+          else
+            echo "detectors_errored=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Skip — no updates this month
         if: steps.detect.outputs.count == '0'
@@ -70,6 +93,7 @@ jobs:
           wp-tooling version-monitor --report < "$RUNNER_TEMP/updates.json" > "$RUNNER_TEMP/pr-body.md"
 
       - name: Open or update draft PR
+        id: pr
         if: steps.detect.outputs.count != '0'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -82,3 +106,19 @@ jobs:
           labels: ${{ inputs.pr-label }}
           assignees: ${{ inputs.pr-assignees }}
           commit-message: "chore(deps): monthly version monitor — ${{ steps.monthly.outputs.month }}"
+
+      - name: Flag detected updates that produced no PR
+        # Updates found but nothing applied (all major, or unmatched) → no diff, no
+        # PR. Fail with the report so the bumps aren't silently dropped.
+        if: steps.detect.outputs.count != '0' && steps.pr.outputs.pull-request-number == ''
+        run: |
+          echo "::error::version-monitor detected ${{ steps.detect.outputs.count }} update(s) but produced no file changes, so no PR was opened — every bump is a major-version bump (skipped pending manual review) or a value could not be matched in its file. Apply these manually:"
+          cat "$RUNNER_TEMP/pr-body.md"
+          exit 1
+
+      - name: Fail if any detector could not be checked
+        # A detector was blind this run — fail even if a partial-results PR opened.
+        if: always() && steps.detect.outputs.detectors_errored == 'true'
+        run: |
+          echo "::error::version-monitor: one or more detectors errored this run, so the results are incomplete. Any PR opened above carries only the updates that were found. See the 'Detect version updates' step log for the failing detector(s)."
+          exit 1

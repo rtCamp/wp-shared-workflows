@@ -19,6 +19,11 @@ Add a `version-monitor.yml` reusable workflow that runs on a monthly schedule, c
 - [2026-05-26] Config check (`.github/version-monitor.yml` present) runs before Node setup for fast failure.
 - [2026-05-27] Install step uses branch URL (`git+https://github.com/rtCamp/wp-tooling.git#v1.0.0/task/version-monitor-scripts`) with a `TODO(wp-tooling#10)` comment to switch to the published package once released.
 - [2026-05-27] `updates.json` and `pr-body.md` written to `$RUNNER_TEMP` (not the workspace) so `peter-evans/create-pull-request` does not commit them into the consumer repo's dependency-bump PR.
+- [2026-06-11] Review fixes:
+  - Node version is now the `node-version` input (default `22`) instead of being hard-coded in the setup step.
+  - `--detect`'s exit-1-with-partial-results is captured (`set +e` + `$?`) so `bash -e` no longer aborts the step and discards the month's findings; valid JSON proceeds to a PR, a non-zero exit records `detectors_errored=true`.
+  - All-major (or all-unmatched) month produces no diff → no PR; a guard step now fails the run with the report printed so the bumps are surfaced, not silently green. A second guard fails the run when a detector errored, honouring wp-tooling's "never green while blind" contract while still letting the partial-results PR open. README/CHANGELOG updated to match.
+  - Install step left unchanged — `@rtcamp/wp-tooling` is still unpublished (`TODO(wp-tooling#10)`).
 
 ---
 
@@ -26,8 +31,7 @@ Add a `version-monitor.yml` reusable workflow that runs on a monthly schedule, c
 
 - `.claude/issues/18-version-monitor-workflow.md` — new
 - `.github/workflows/version-monitor.yml` — new
-- `.github/workflows/_examples/caller-version-monitor.yml` — new
-- `README.md` — edited
+- `README.md` — edited (version-monitor section in the standard `### <workflow>` format)
 - `CHANGELOG.md` — new
 
 ---
