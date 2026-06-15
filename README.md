@@ -351,6 +351,43 @@ jobs:
 
 The artifact must be a **complete installable plugin/theme directory** (main PHP file plus assets), so point `ci-build.yml`'s `artifact-path` at a packaged dist directory, not bare `build/`. `actions/download-artifact` restores the uploaded directory contents uncompressed, so there is no unzip step. The workflow writes a `.wp-env.override.json` that pins `phpVersion`/`core` and mounts **only** the downloaded artifact — it clears `plugins`/`themes` from the consumer's `.wp-env.json` so the test reflects the packaged output in isolation, not the dev source tree. It then runs `wp <plugin|theme> activate <slug>` and `wp doctor check --all` (failing only on `error` severity), and always runs `wp-env stop` so no container leaks into the next job.
 
+### `cd-github-release.yml`: GitHub Release
+
+On a `v*.*.*` tag push, publishes a GitHub Release: the body is pulled from the matching `CHANGELOG.md` section, the named build artifact is attached, and `draft` / `prerelease` are honoured. Uses the `gh` CLI (no third-party action). Usually called by `wp-cd.yml`, but works standalone.
+
+```yaml
+# .github/workflows/release.yml in the consumer
+name: Release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: "release"
+  github-release:
+    needs: build
+    permissions:
+      contents: write
+    uses: rtCamp/shared-workflows/.github/workflows/cd-github-release.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+      artifact-name: "release"
+```
+
+| Input            | Type    | Default          | Description                                                                       |
+| ---------------- | ------- | ---------------- | --------------------------------------------------------------------------------- |
+| `tag`            | string  | _(required)_     | Tag that triggered the release, e.g. `v1.2.3`.                                    |
+| `artifact-name`  | string  | _(required)_     | Build artifact to download and attach. Must match the producing job's name.       |
+| `changelog-path` | string  | `"CHANGELOG.md"` | Changelog whose matching section becomes the release body.                        |
+| `draft`          | boolean | `false`          | Create the Release as a draft.                                                    |
+| `prerelease`     | boolean | `false`          | Mark the Release as a prerelease.                                                 |
+
+The calling job must grant `permissions: contents: write`. The artifact must be produced **in the same workflow run** — `download-artifact` only sees the current run's artifacts. The changelog heading must contain the tag's version (`## v1.2.3` or `## [1.2.3]`, with an optional trailing date); `## Unreleased` is never matched. A missing or empty section fails the workflow rather than publishing a Release with no notes.
+
 ## License
 
 GPL-2.0-or-later
