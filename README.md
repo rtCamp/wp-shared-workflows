@@ -289,7 +289,12 @@ on:
     tags: ["v*.*.*"]
 permissions:
   contents: read
-  artifact-name: s3-build
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: s3-build
       # build-command / artifact-path must produce one .zip in the artifact.
   deploy:
     needs: build
@@ -304,8 +309,6 @@ permissions:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
-
-The full copy-paste caller lives at [`.github/workflows/_examples/caller-cd-s3.yml`](.github/workflows/_examples/caller-cd-s3.yml).
 
 | Input                        | Type   | Default       | Description                                                              |
 | ---------------------------- | ------ | ------------- | ------------------------------------------------------------------------ |
