@@ -23,14 +23,12 @@ Plugins on the WordPress.org directory deploy over SVN to `https://plugins.svn.w
 - [2026-05-29] **Artifact → `BUILD_DIR`.** The action rsyncs `$BUILD_DIR/` into `trunk/`; we download the artifact to `artifact/` and set `BUILD_DIR: artifact`. Assets are read from the *workspace* (`$GITHUB_WORKSPACE/$ASSETS_DIR/`), so the job also checks out the repo.
 - [2026-05-29] **Injection-safe + fail-fast:** `tag` / `artifact-name` pass via step `env:` and are referenced as `$VARS`; nothing interpolated as `${{ inputs.* }}` inside a script. Missing `readme.txt`, missing `Stable tag:` header, or a mismatch each `::error::` + `exit 1` before the action runs (matches `cd-github-release.yml`).
 - [2026-05-29] **`permissions: contents: read`** — only `checkout` reads the repo; the SVN deploy authenticates with the secrets, not the GitHub token.
-- [2026-05-29] **Inputs = the five from the contract** + secrets `WP_ORG_USERNAME` / `WP_ORG_PASSWORD`. `generate-zip` not exposed (out of scope). Added the `_examples/caller-cd-wp-org.yml` reference caller.
 
 ---
 
 ## Files changed so far
 
 - `.github/workflows/cd-wp-org.yml` — new (the workflow)
-- `.github/workflows/_examples/caller-cd-wp-org.yml` — new (tag-triggered caller with secrets)
 - `README.md` — edited (new `### cd-wp-org.yml` section under Individual workflows)
 - `CHANGELOG.md` — edited (bullet under Unreleased → Added)
 - `.claude/issues/15-cd-wp-org.md` — new (this file)
@@ -40,7 +38,7 @@ Plugins on the WordPress.org directory deploy over SVN to `https://plugins.svn.w
 ## Verification run
 
 ```bash
-❯ pipx run yamllint .github/workflows/cd-wp-org.yml .github/workflows/_examples/caller-cd-wp-org.yml
+❯ pipx run yamllint .github/workflows/cd-wp-org.yml
 ❯ act workflow_call -W .github/workflows/cd-wp-org.yml --dryrun
 INFO[0000] Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock' 
 WARN  ⚠ You are using Apple M-series chip and you have not specified container architecture, you might encounter issues while running act. If so, try running it with '--container-architecture linux/amd64'. ⚠  

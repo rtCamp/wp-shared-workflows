@@ -289,9 +289,17 @@ on:
     tags: ["v*.*.*"]
 permissions:
   contents: read
-  artifact-name: wp-org-build
-      # build-command / artifact-path must place the shippable plugin files
-      # (readme.txt at the artifact root) — see ci-build.yml above.
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: wp-org-build
+      # The artifact root must contain readme.txt, so point artifact-path at a
+      # packaged plugin dir (not bare build/). Adjust build-command to whatever
+      # produces that dir in your repo.
+      build-command: "npm run build:prod"
+      artifact-path: "dist/my-plugin/"
   deploy:
     needs: build
     uses: rtCamp/shared-workflows/.github/workflows/cd-wp-org.yml@v1
@@ -303,8 +311,6 @@ permissions:
       WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME }}
       WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD }}
 ```
-
-The full copy-paste caller lives at [`.github/workflows/_examples/caller-cd-wp-org.yml`](.github/workflows/_examples/caller-cd-wp-org.yml).
 
 | Input           | Type    | Default            | Description                                                                  |
 | --------------- | ------- | ------------------ | ---------------------------------------------------------------------------- |
