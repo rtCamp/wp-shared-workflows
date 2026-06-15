@@ -314,9 +314,9 @@ jobs:
 
 | Input           | Type    | Default            | Description                                                                  |
 | --------------- | ------- | ------------------ | ---------------------------------------------------------------------------- |
-| `slug`          | string  | —                  | **Required.** Plugin slug on wordpress.org.                                  |
-| `tag`           | string  | —                  | **Required.** Release tag, e.g. `v1.2.3`. A leading `v` is stripped.         |
-| `artifact-name` | string  | —                  | **Required.** Build artifact to download and deploy (must match the producer). |
+| `slug`          | string  | _(required)_       | **Required.** Plugin slug on wordpress.org.                                  |
+| `tag`           | string  | _(required)_       | **Required.** Release tag, e.g. `v1.2.3`. A leading `v` is stripped.         |
+| `artifact-name` | string  | _(required)_       | **Required.** Build artifact to download and deploy (must match the producer). |
 | `assets-path`   | string  | `".wordpress-org"` | Local directory mapped to SVN `/assets/`. Skipped if absent.                 |
 | `dry-run`       | boolean | `false`            | Run the full deploy except the final SVN commit.                            |
 
