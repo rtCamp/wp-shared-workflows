@@ -400,8 +400,13 @@ on:
     tags: ["v*.*.*"]
 permissions:
   contents: read
-  artifact-name: s3-build
-      # build-command / artifact-path must produce one .zip in the artifact.
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: s3-build
+      # build-command / artifact-path must produce exactly one .zip in the artifact.
   deploy:
     needs: build
     uses: rtCamp/shared-workflows/.github/workflows/cd-s3.yml@v1
@@ -418,9 +423,9 @@ permissions:
 
 | Input                        | Type   | Default       | Description                                                              |
 | ---------------------------- | ------ | ------------- | ------------------------------------------------------------------------ |
-| `tag`                        | string | —             | **Required.** Release tag; the versioned object is keyed `<prefix><tag>.zip`. |
-| `artifact-name`              | string | —             | **Required.** Build artifact to download (must match the producer).      |
-| `bucket`                     | string | —             | **Required.** Target S3 bucket name.                                     |
+| `tag`                        | string | _(required)_  | **Required.** Release tag; the versioned object is keyed `<prefix><tag>.zip`. |
+| `artifact-name`              | string | _(required)_  | **Required.** Build artifact to download (must match the producer).      |
+| `bucket`                     | string | _(required)_  | **Required.** Target S3 bucket name.                                     |
 | `prefix`                     | string | `""`          | Optional S3 key prefix, e.g. `plugins/myplugin/` (include the trailing slash). |
 | `cloudfront-distribution-id` | string | `""`          | If set, invalidate `/<prefix>*` on this distribution after upload.       |
 | `region`                     | string | `"us-east-1"` | AWS region of the bucket.                                                |

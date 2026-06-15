@@ -64,6 +64,16 @@ jobs:
           PREFIX: ${{ inputs.prefix }}
         run: |
           set -euo pipefail
+          if [[ -n "$PREFIX" ]]; then
+            if [[ "$PREFIX" == /* ]]; then
+              echo "::error::prefix must not start with '/' (got '$PREFIX')"
+              exit 1
+            fi
+            if [[ "$PREFIX" != */ ]]; then
+              echo "::error::prefix must end with '/' (got '$PREFIX')"
+              exit 1
+            fi
+          fi
           shopt -s nullglob
           zips=(artifact/*.zip)
           if [ ${#zips[@]} -eq 0 ]; then
