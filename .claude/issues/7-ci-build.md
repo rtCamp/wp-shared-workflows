@@ -1,6 +1,6 @@
 # Issue #7 — Add ci-build reusable workflow
 
-**Status:** in-progress
+**Status:** done
 **Branch:** `v1.0.0/task/ci-build`
 **PR:** #8
 **Assignee:** @Adi-ty

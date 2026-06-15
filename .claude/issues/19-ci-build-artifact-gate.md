@@ -1,6 +1,6 @@
 # Issue #19: Add ci-build-artifact-gate reusable workflow
 
-**Status:** in-review
+**Status:** done
 **Branch:** `v1.0.0/task/ci-build-artifact-gate`
 **PR:** #19
 **Closes:** `rtCamp/theme-elementary#642` (external)
