@@ -400,7 +400,12 @@ on:
     tags: ["v*.*.*"]
 permissions:
   contents: read
-  artifact-name: wp-org-build
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: wp-org-build
       # The artifact root must contain readme.txt, so point artifact-path at a
       # packaged plugin dir (not bare build/). Adjust build-command to whatever
       # produces that dir in your repo.
