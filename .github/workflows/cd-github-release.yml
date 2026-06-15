@@ -1,0 +1,103 @@
+name: CD / GitHub Release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag that triggered the release, e.g. v1.2.3."
+        type: string
+        required: true
+      artifact-name:
+        description: "Name of the build artifact to download and attach. Must match the name used by the producing job (e.g. ci-build.yml's artifact-name)."
+        type: string
+        required: true
+      changelog-path:
+        description: "Path to the changelog whose matching section becomes the release body."
+        type: string
+        default: "CHANGELOG.md"
+      draft:
+        description: "Create the GitHub Release as a draft."
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Download release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: artifact
+
+      - name: Extract changelog section
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          CHANGELOG_PATH: ${{ inputs.changelog-path }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$CHANGELOG_PATH" ]; then
+            echo "::error::Changelog not found at '$CHANGELOG_PATH'"
+            exit 1
+          fi
+          ver="${TAG#v}"
+          # Capture the body under the heading whose first token matches the tag's
+          # version, tolerating "## v1.2.3", "## 1.2.3", "## [1.2.3]", "## [v1.2.3]"
+          # and an optional trailing " - date". Exact token compare keeps "## Unreleased"
+          # and "## v1.2.30" from matching "v1.2.3".
+          awk -v ver="$ver" '
+            /^## / {
+              if (capture) { exit }
+              line = $0
+              sub(/^##[ \t]+/, "", line)
+              split(line, parts, /[ \t]+/)
+              head = parts[1]
+              gsub(/^\[|\]$/, "", head)
+              sub(/^v/, "", head)
+              if (head == ver) { capture = 1 }
+              next
+            }
+            capture { print }
+          ' "$CHANGELOG_PATH" > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::No changelog section found for $TAG in $CHANGELOG_PATH"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          DRAFT: ${{ inputs.draft }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(artifact/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::Downloaded artifact '$ARTIFACT_NAME' contains no files to attach"
+            exit 1
+          fi
+          args=(release create "$TAG" "${files[@]}" --verify-tag --title "$TAG" --notes-file release-notes.md)
+          if [ "$DRAFT" = "true" ]; then
+            args+=(--draft)
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"

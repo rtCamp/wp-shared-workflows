@@ -227,6 +227,80 @@ jobs:
 
 Only meaningful on `pull_request` events. On other triggers it logs a notice and exits 0 so the workflow stays inert outside PRs. The check compares `origin/<base>..HEAD` with `--diff-filter=ACMR`, so deletions are ignored: removing a previously-committed artifact in the PR does not trip the gate.
 
+### `cd-split-composer-packages.yml`: split Composer packages to mirror repos
+
+Splits Composer-package subtrees out of a monorepo into standalone mirror repos (the Symfony "monorepo split" pattern), so Packagist can serve each package from its own repository. A `splitsh.json` (by default at the repo root) is the single source of truth — to add or remove a package, edit that file, never the workflow.
+
+`splitsh.json` lives in the **calling** monorepo (e.g. `wp-tooling`), not in this repo. As a reusable workflow, `actions/checkout` pulls the caller's repository by default, so the config is read from the caller's checkout — `config-file` is a path relative to that checkout, never the file's contents.
+
+`splitsh.json`:
+
+```json
+{
+  "organization": "rtCamp",
+  "subtrees": {
+    "wp-phpcs": "composer-packages/phpcs",
+    "wp-phpstan": "composer-packages/phpstan"
+  },
+  "defaults": {
+    "branch": "main",
+    "user_name": "github-actions[bot]",
+    "user_email": "github-actions[bot]@users.noreply.github.com"
+  }
+}
+```
+
+Caller — split on every `v*` tag push:
+
+```yaml
+# .github/workflows/split.yml in the monorepo
+name: Split Composer Packages
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  split:
+    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      split-token: ${{ secrets.SPLIT_TOKEN }}
+```
+
+The reusable workflow owns no trigger of its own — the caller decides when it runs. To also allow a manual smoke-test run (the `workflow_dispatch` path the standalone version had), add the trigger and pass the tag through. On a manual run `github.ref_name` is a **branch**, not a tag, so the dispatch input must win:
+
+```yaml
+# .github/workflows/split.yml in the monorepo
+name: Split Composer Packages
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      test_tag:
+        description: "Throwaway tag to push to mirrors (e.g. v0.0.0-test)"
+        required: true
+        default: "v0.0.0-test"
+jobs:
+  split:
+    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    with:
+      # Manual run → use the dispatch input; tag push → the pushed tag.
+      tag: ${{ github.event.inputs.test_tag || github.ref_name }}
+    secrets:
+      split-token: ${{ secrets.SPLIT_TOKEN }}
+```
+
+| Input         | Type   | Default          | Description                                                                              |
+| ------------- | ------ | ---------------- | ---------------------------------------------------------------------------------------- |
+| `tag`         | string | `""`             | Tag to push to the mirror repos. When empty, falls back to the caller's `github.ref_name`. |
+| `config-file` | string | `"splitsh.json"` | Path to the splitsh config file, relative to the repo root.                              |
+
+| Secret        | Required | Description                                                                                            |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `split-token` | yes      | Token (fine-grained PAT or GitHub App token) with `contents: write` on every mirror repo in the config. |
+
+The `subtrees` map accepts both the shorthand string form (`"mirror": "path/in/monorepo"`) and the object form (`"mirror": { "prefixes": [{ "from": "path" }] }`). Each subtree is force-pushed to its mirror in parallel with `fail-fast: false`, so one failing package does not abort the rest. A missing or empty config fails the run loudly.
 ### `ci-test-build-artifact.yml`: boot the built artifact
 
 A green `ci-build.yml` run only proves the build did not crash — not that the packaged output installs and boots. This workflow downloads the artifact, boots a real WordPress in [`@wordpress/env`](https://github.com/WordPress/gutenberg/tree/trunk/packages/env), activates the plugin/theme, and runs `wp doctor`. It catches PHP files referenced but never copied into the bundle, an over-eager `.distignore`, and path-cased files that break on Linux. Pair it with `ci-build.yml`.
@@ -277,6 +351,43 @@ jobs:
 
 The artifact must be a **complete installable plugin/theme directory** (main PHP file plus assets), so point `ci-build.yml`'s `artifact-path` at a packaged dist directory, not bare `build/`. `actions/download-artifact` restores the uploaded directory contents uncompressed, so there is no unzip step. The workflow writes a `.wp-env.override.json` that pins `phpVersion`/`core` and mounts **only** the downloaded artifact — it clears `plugins`/`themes` from the consumer's `.wp-env.json` so the test reflects the packaged output in isolation, not the dev source tree. It then runs `wp <plugin|theme> activate <slug>` and `wp doctor check --all` (failing only on `error` severity), and always runs `wp-env stop` so no container leaks into the next job.
 
+### `cd-github-release.yml`: GitHub Release
+
+On a `v*.*.*` tag push, publishes a GitHub Release: the body is pulled from the matching `CHANGELOG.md` section, the named build artifact is attached, and `draft` / `prerelease` are honoured. Uses the `gh` CLI (no third-party action). Usually called by `wp-cd.yml`, but works standalone.
+
+```yaml
+# .github/workflows/release.yml in the consumer
+name: Release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: "release"
+  github-release:
+    needs: build
+    permissions:
+      contents: write
+    uses: rtCamp/shared-workflows/.github/workflows/cd-github-release.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+      artifact-name: "release"
+```
+
+| Input            | Type    | Default          | Description                                                                       |
+| ---------------- | ------- | ---------------- | --------------------------------------------------------------------------------- |
+| `tag`            | string  | _(required)_     | Tag that triggered the release, e.g. `v1.2.3`.                                    |
+| `artifact-name`  | string  | _(required)_     | Build artifact to download and attach. Must match the producing job's name.       |
+| `changelog-path` | string  | `"CHANGELOG.md"` | Changelog whose matching section becomes the release body.                        |
+| `draft`          | boolean | `false`          | Create the Release as a draft.                                                    |
+| `prerelease`     | boolean | `false`          | Mark the Release as a prerelease.                                                 |
+
+The calling job must grant `permissions: contents: write`. The artifact must be produced **in the same workflow run** — `download-artifact` only sees the current run's artifacts. The changelog heading must contain the tag's version (`## v1.2.3` or `## [1.2.3]`, with an optional trailing date); `## Unreleased` is never matched. A missing or empty section fails the workflow rather than publishing a Release with no notes.
+
 ### `cd-s3.yml`: S3 deploy
 
 Distributes a private / customer plugin by uploading the build artifact to an S3 bucket on a release tag — a versioned object (`<prefix><tag>.zip`) plus a rolling `<prefix>latest.zip` that always overwrites — and optionally invalidates a CloudFront distribution so the new `latest.zip` is served immediately. Uses the official [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) (SHA-pinned) and the preinstalled AWS CLI.
@@ -289,12 +400,7 @@ on:
     tags: ["v*.*.*"]
 permissions:
   contents: read
-jobs:
-  build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
-    with:
-      upload-artifact: true
-      artifact-name: s3-build
+  artifact-name: s3-build
       # build-command / artifact-path must produce one .zip in the artifact.
   deploy:
     needs: build
