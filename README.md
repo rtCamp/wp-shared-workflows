@@ -443,7 +443,7 @@ Notes:
 - **Same-run artifact** — `actions/download-artifact` only sees the current run's artifacts, so build and deploy must run in the same workflow (`deploy` `needs: build`).
 - **Assets** are read from the *checked-out repo* at `assets-path` (not from the artifact); the build artifact supplies the plugin files for `trunk/`.
 - **`Stable tag`** in `readme.txt` must equal the tag with any leading `v` removed (`v1.2.3` → `1.2.3`). Plugins using `Stable tag: trunk` are not supported by the strict check.
-- **Idempotent** — if `tags/<version>` already exists on WP.org the action exits successfully without re-committing.
+- **Immutable tags** — WordPress.org SVN tags are release snapshots; the deploy action errors (non-zero) if `tags/<version>` already exists, so re-deploying the same version fails rather than overwriting it.
 - **`dry-run`** still checks out the live WP.org SVN repo for the slug; it only skips the commit, so exercising it end to end needs a real published slug.
 
 ## License

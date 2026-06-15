@@ -87,7 +87,7 @@ readme `Stable tag` check (local awk unit-test, all pass): `Stable tag: 1.2.3` m
 
 - **`Stable tag: trunk` plugins are rejected** by the strict match.
 - **Same-run artifact** — `download-artifact@v4` only sees the current run's artifacts; the model is build → deploy in one run (mirrors `cd-github-release.yml`).
-- **Idempotent re-run** — the action exits 0 if `tags/<version>` already exists on WP.org.
+- **Immutable tags** — the action errors (non-zero) if `tags/<version>` already exists on WP.org; it will not overwrite an existing tag, so re-deploying the same version fails.
 - **Third-party action** — not WordPress/Automattic org, but no official option exists; SHA-pinned to v2.3.0 and tracked.
 - **README merge order** — `cd-github-release.yml` (PR #24) also adds a section before `## License`; whichever merges second may need a trivial conflict resolution.
 - **Action pins:** `actions/checkout@…v4.2.2`, `actions/download-artifact@…v4.3.0` (reuse the CD sibling's pins), `10up/action-wordpress-plugin-deploy@54bd289… # v2.3.0`.
