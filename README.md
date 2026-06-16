@@ -453,7 +453,14 @@ Distributes a private / customer plugin by uploading the build artifact to an S3
 ```yaml
 # .github/workflows/deploy-s3.yml in the consumer
 name: Deploy to S3
-uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: s3-build

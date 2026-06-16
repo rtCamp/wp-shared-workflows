@@ -64,6 +64,10 @@ jobs:
           PREFIX: ${{ inputs.prefix }}
         run: |
           set -euo pipefail
+          if [[ "$BUCKET" == */* ]]; then
+            echo "::error::bucket must be a bucket name only (no '/'); put any path in 'prefix' (got '$BUCKET')"
+            exit 1
+          fi
           if [[ -n "$PREFIX" ]]; then
             if [[ "$PREFIX" == /* ]]; then
               echo "::error::prefix must not start with '/' (got '$PREFIX')"
