@@ -1,0 +1,105 @@
+name: CD / S3 Deploy
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.2.3. Used as the versioned object key (<prefix><tag>.zip)."
+        type: string
+        required: true
+      artifact-name:
+        description: "Name of the build artifact to download. Must match the name used by the producing job (e.g. ci-build.yml's artifact-name)."
+        type: string
+        required: true
+      bucket:
+        description: "Target S3 bucket name."
+        type: string
+        required: true
+      prefix:
+        description: "Optional S3 key prefix, e.g. 'plugins/myplugin/'. Include the trailing slash."
+        type: string
+        default: ""
+      cloudfront-distribution-id:
+        description: "If set, invalidate /<prefix>* on this CloudFront distribution after upload."
+        type: string
+        default: ""
+      region:
+        description: "AWS region of the bucket. Mismatched regions make 'aws s3 cp' redirect (slower)."
+        type: string
+        default: "us-east-1"
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        description: "AWS access key id with s3:PutObject on the prefix (and cloudfront:CreateInvalidation if a distribution id is set)."
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        description: "AWS secret access key for the above key id."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Upload to S3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: artifact
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@99214aa6889fcddfa57764031d71add364327e59  # v6.1.3
+        with:
+          aws-region: ${{ inputs.region }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Upload to S3
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          BUCKET: ${{ inputs.bucket }}
+          PREFIX: ${{ inputs.prefix }}
+        run: |
+          set -euo pipefail
+          if [[ "$BUCKET" == */* ]]; then
+            echo "::error::bucket must be a bucket name only (no '/'); put any path in 'prefix' (got '$BUCKET')"
+            exit 1
+          fi
+          if [[ -n "$PREFIX" ]]; then
+            if [[ "$PREFIX" == /* ]]; then
+              echo "::error::prefix must not start with '/' (got '$PREFIX')"
+              exit 1
+            fi
+            if [[ "$PREFIX" != */ ]]; then
+              echo "::error::prefix must end with '/' (got '$PREFIX')"
+              exit 1
+            fi
+          fi
+          # Search recursively: download-artifact preserves the producer's
+          # directory structure, so the zip may sit under a subdirectory.
+          mapfile -d '' zips < <(find artifact -type f -name '*.zip' -print0)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::No .zip file found in the downloaded artifact"
+            exit 1
+          fi
+          if [ ${#zips[@]} -gt 1 ]; then
+            echo "::error::Multiple .zip files found in the downloaded artifact; expected exactly one."
+            printf '  - %s\n' "${zips[@]}"
+            exit 1
+          fi
+          src="${zips[0]}"
+          aws s3 cp "$src" "s3://${BUCKET}/${PREFIX}${TAG}.zip"
+          aws s3 cp "$src" "s3://${BUCKET}/${PREFIX}latest.zip"
+
+      - name: Invalidate CloudFront
+        if: ${{ inputs.cloudfront-distribution-id != '' }}
+        shell: bash
+        env:
+          DISTRIBUTION_ID: ${{ inputs.cloudfront-distribution-id }}
+          PREFIX: ${{ inputs.prefix }}
+        run: |
+          set -euo pipefail
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/${PREFIX}*"

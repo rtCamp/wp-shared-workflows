@@ -1,6 +1,6 @@
-# shared-workflows
+# wp-shared-workflows
 
-Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — zero JavaScript. Consumed by every rtCamp repo via `uses: rtCamp/shared-workflows/.github/workflows/<name>.yml@v1`.
+Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — zero JavaScript. Consumed by every rtCamp repo via `uses: rtCamp/wp-shared-workflows/.github/workflows/<name>.yml@v1`.
 
 ## What's inside
 
@@ -24,7 +24,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   ci:
-    uses: rtCamp/shared-workflows/.github/workflows/wp-ci.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
     with:
       php-version: "8.3"
       node-version: "22"
@@ -42,7 +42,7 @@ Runs the consumer's production build, with an optional artifact upload for downs
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
 ```
@@ -52,7 +52,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
       upload-artifact: true
@@ -63,7 +63,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
       install-composer-deps: true
@@ -76,7 +76,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       install-node-deps: false
       install-composer-deps: true
@@ -107,7 +107,7 @@ Runs PHPUnit either against a real WordPress environment via [`@wordpress/env`](
 ```yaml
 jobs:
   test-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
     with:
       php-version: "8.3"
 ```
@@ -117,7 +117,7 @@ jobs:
 ```yaml
 jobs:
   test-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
     with:
       php-version: "8.3"
       use-wp-env: false
@@ -143,7 +143,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   test-js:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-js.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-js.yml@v1
     with:
       node-version: "22"
 ```
@@ -168,7 +168,7 @@ on:
 jobs:
   test-a11y:
     if: contains(github.event.pull_request.labels.*.name, 'Run a11y')
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-a11y.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-a11y.yml@v1
     with:
       node-version: "22"
 ```
@@ -193,7 +193,7 @@ Fails a PR if it touches any file under the configured path prefixes (default: `
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
 ```
 
 **Multiple gated paths:**
@@ -201,7 +201,7 @@ jobs:
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       gated-paths: |
         assets/build/
@@ -214,7 +214,7 @@ jobs:
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       gated-paths: "assets/build/"
       working-dir: "packages/admin-ui"
@@ -260,7 +260,7 @@ on:
     tags: ["v*"]
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       tag: ${{ github.ref_name }}
     secrets:
@@ -283,7 +283,7 @@ on:
         default: "v0.0.0-test"
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       # Manual run → use the dispatch input; tag push → the pushed tag.
       tag: ${{ github.event.inputs.test_tag || github.ref_name }}
@@ -310,14 +310,14 @@ A green `ci-build.yml` run only proves the build did not crash — not that the 
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: "plugin-dist"
       artifact-path: "dist/my-plugin/"   # a complete installable plugin dir, not bare build/
   test-artifact:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
     with:
       artifact-name: "plugin-dist"
       slug: "my-plugin"
@@ -329,7 +329,7 @@ jobs:
 jobs:
   test-artifact:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
     with:
       artifact-name: "theme-dist"
       slug: "my-theme"
@@ -364,7 +364,7 @@ on:
       - "v*.*.*"
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: "release"
@@ -372,7 +372,7 @@ jobs:
     needs: build
     permissions:
       contents: write
-    uses: rtCamp/shared-workflows/.github/workflows/cd-github-release.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-github-release.yml@v1
     with:
       tag: ${{ github.ref_name }}
       artifact-name: "release"
@@ -445,6 +445,81 @@ Notes:
 - **`Stable tag`** in `readme.txt` must equal the tag with any leading `v` removed (`v1.2.3` → `1.2.3`). Plugins using `Stable tag: trunk` are not supported by the strict check.
 - **Immutable tags** — WordPress.org SVN tags are release snapshots; the deploy action errors (non-zero) if `tags/<version>` already exists, so re-deploying the same version fails rather than overwriting it.
 - **`dry-run`** still checks out the live WP.org SVN repo for the slug; it only skips the commit, so exercising it end to end needs a real published slug.
+
+### `cd-s3.yml`: S3 deploy
+
+Distributes a private / customer plugin by uploading the build artifact to an S3 bucket on a release tag — a versioned object (`<prefix><tag>.zip`) plus a rolling `<prefix>latest.zip` that always overwrites — and optionally invalidates a CloudFront distribution so the new `latest.zip` is served immediately. Uses the official [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) (SHA-pinned) and the preinstalled AWS CLI.
+
+```yaml
+# .github/workflows/deploy-s3.yml in the consumer
+name: Deploy to S3
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: s3-build
+      # build-command / artifact-path must produce exactly one .zip in the artifact.
+  deploy:
+    needs: build
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-s3.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+      artifact-name: s3-build
+      bucket: my-customer-bucket
+      prefix: "plugins/my-plugin/"
+      # cloudfront-distribution-id: "E123ABC"   # optional
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+```
+
+| Input                        | Type   | Default       | Description                                                              |
+| ---------------------------- | ------ | ------------- | ------------------------------------------------------------------------ |
+| `tag`                        | string | _(required)_  | **Required.** Release tag; the versioned object is keyed `<prefix><tag>.zip`. |
+| `artifact-name`              | string | _(required)_  | **Required.** Build artifact to download (must match the producer).      |
+| `bucket`                     | string | _(required)_  | **Required.** Target S3 bucket name.                                     |
+| `prefix`                     | string | `""`          | Optional S3 key prefix, e.g. `plugins/myplugin/` (include the trailing slash). |
+| `cloudfront-distribution-id` | string | `""`          | If set, invalidate `/<prefix>*` on this distribution after upload.       |
+| `region`                     | string | `"us-east-1"` | AWS region of the bucket.                                                |
+
+| Secret                  | Required | Description                      |
+| ----------------------- | -------- | -------------------------------- |
+| `AWS_ACCESS_KEY_ID`     | yes      | AWS access key id (see IAM below). |
+| `AWS_SECRET_ACCESS_KEY` | yes      | AWS secret access key.           |
+
+**Required IAM permissions.** The credentials need write access to the prefix, plus
+`cloudfront:CreateInvalidation` only if you pass a distribution id:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::my-customer-bucket/plugins/my-plugin/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::<account-id>:distribution/E123ABC"
+    }
+  ]
+}
+```
+
+Notes:
+
+- **Same-run artifact** — `actions/download-artifact` only sees the current run's artifacts, so build and deploy must run in the same workflow (`deploy` `needs: build`), and the artifact must contain exactly one `.zip`.
+- **Bucket region** should match `region`; otherwise `aws s3 cp` issues a redirect and runs slower.
+- **Pre-existing infra** — the bucket and (if used) the CloudFront distribution must already exist; this workflow does not create or configure them.
+- **`latest.zip` is CloudFront-cached** — the invalidation step is what makes "always-latest" actually serve the new build.
 
 ## License
 
