@@ -1,6 +1,6 @@
 # Issue #3 — ci-test-js.yml reusable workflow
 
-**Status:** in-progress
+**Status:** done
 **Branch:** `v1.0.0/task/ci-test-js`
 **PR:** #4
 **Assignee:** @Adi-ty

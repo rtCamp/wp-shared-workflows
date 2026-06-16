@@ -1,6 +1,6 @@
 # Issue #5 — Add PHP unit tests reusable workflow
 
-**Status:** in-progress
+**Status:** done
 **Branch:** `v1.0.0/task/ci-test-php`
 **PR:** #6
 **Assignee:** @Adi-ty

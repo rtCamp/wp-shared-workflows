@@ -1,6 +1,6 @@
 # Issue #9 — Add ci-test-a11y reusable workflow
 
-**Status:** in-progress
+**Status:** done
 **Branch:** `v1.0.0/task/ci-test-a11y`
 **PR:** #10
 **Assignee:** @Adi-ty
