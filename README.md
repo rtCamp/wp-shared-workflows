@@ -388,6 +388,64 @@ jobs:
 
 The calling job must grant `permissions: contents: write`. The artifact must be produced **in the same workflow run** — `download-artifact` only sees the current run's artifacts. The changelog heading must contain the tag's version (`## v1.2.3` or `## [1.2.3]`, with an optional trailing date); `## Unreleased` is never matched. A missing or empty section fails the workflow rather than publishing a Release with no notes.
 
+### `cd-wp-org.yml`: WordPress.org deploy
+
+Deploys a plugin to the [WordPress.org plugin directory](https://plugins.svn.wordpress.org/) over SVN on a release tag, wrapping the standard [`10up/action-wordpress-plugin-deploy`](https://github.com/10up/action-wordpress-plugin-deploy) (SHA-pinned). Before deploying it fails fast unless `readme.txt`'s `Stable tag` matches the release tag, then syncs the build artifact to `trunk/` + `tags/<version>/` and the `assets-path` directory to SVN `/assets/`. `dry-run` runs everything except the final commit.
+
+```yaml
+# .github/workflows/deploy-wp-org.yml in the consumer
+name: Deploy to WordPress.org
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      upload-artifact: true
+      artifact-name: wp-org-build
+      # The artifact root must contain readme.txt, so point artifact-path at a
+      # packaged plugin dir (not bare build/). Adjust build-command to whatever
+      # produces that dir in your repo.
+      build-command: "npm run build:prod"
+      artifact-path: "dist/my-plugin/"
+  deploy:
+    needs: build
+    uses: rtCamp/shared-workflows/.github/workflows/cd-wp-org.yml@v1
+    with:
+      slug: my-plugin
+      tag: ${{ github.ref_name }}
+      artifact-name: wp-org-build
+    secrets:
+      WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME }}
+      WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD }}
+```
+
+| Input           | Type    | Default            | Description                                                                  |
+| --------------- | ------- | ------------------ | ---------------------------------------------------------------------------- |
+| `slug`          | string  | _(required)_       | **Required.** Plugin slug on wordpress.org.                                  |
+| `tag`           | string  | _(required)_       | **Required.** Release tag, e.g. `v1.2.3`. A leading `v` is stripped.         |
+| `artifact-name` | string  | _(required)_       | **Required.** Build artifact to download and deploy (must match the producer). |
+| `assets-path`   | string  | `".wordpress-org"` | Local directory mapped to SVN `/assets/`. Skipped if absent.                 |
+| `dry-run`       | boolean | `false`            | Run the full deploy except the final SVN commit.                            |
+
+| Secret            | Required | Description                                                            |
+| ----------------- | -------- | -------------------------------------------------------------------- |
+| `WP_ORG_USERNAME` | yes      | WordPress.org account username with commit access to the plugin.     |
+| `WP_ORG_PASSWORD` | yes      | WordPress.org account password.                                      |
+
+Add the secrets under the consumer repo's **Settings → Secrets and variables → Actions**, then pass them through as shown above (reusable-workflow secrets are not inherited automatically).
+
+Notes:
+
+- **Same-run artifact** — `actions/download-artifact` only sees the current run's artifacts, so build and deploy must run in the same workflow (`deploy` `needs: build`).
+- **Assets** are read from the *checked-out repo* at `assets-path` (not from the artifact); the build artifact supplies the plugin files for `trunk/`.
+- **`Stable tag`** in `readme.txt` must equal the tag with any leading `v` removed (`v1.2.3` → `1.2.3`). Plugins using `Stable tag: trunk` are not supported by the strict check.
+- **Immutable tags** — WordPress.org SVN tags are release snapshots; the deploy action errors (non-zero) if `tags/<version>` already exists, so re-deploying the same version fails rather than overwriting it.
+- **`dry-run`** still checks out the live WP.org SVN repo for the slug; it only skips the commit, so exercising it end to end needs a real published slug.
+
 ## License
 
 GPL-2.0-or-later
