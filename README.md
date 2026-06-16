@@ -1,6 +1,6 @@
-# shared-workflows
+# wp-shared-workflows
 
-Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — zero JavaScript. Consumed by every rtCamp repo via `uses: rtCamp/shared-workflows/.github/workflows/<name>.yml@v1`.
+Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — zero JavaScript. Consumed by every rtCamp repo via `uses: rtCamp/wp-shared-workflows/.github/workflows/<name>.yml@v1`.
 
 ## What's inside
 
@@ -24,7 +24,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   ci:
-    uses: rtCamp/shared-workflows/.github/workflows/wp-ci.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
     with:
       php-version: "8.3"
       node-version: "22"
@@ -42,7 +42,7 @@ Runs the consumer's production build, with an optional artifact upload for downs
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
 ```
@@ -52,7 +52,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
       upload-artifact: true
@@ -63,7 +63,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
       install-composer-deps: true
@@ -76,7 +76,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       install-node-deps: false
       install-composer-deps: true
@@ -107,7 +107,7 @@ Runs PHPUnit either against a real WordPress environment via [`@wordpress/env`](
 ```yaml
 jobs:
   test-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
     with:
       php-version: "8.3"
 ```
@@ -117,7 +117,7 @@ jobs:
 ```yaml
 jobs:
   test-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
     with:
       php-version: "8.3"
       use-wp-env: false
@@ -143,7 +143,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   test-js:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-js.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-js.yml@v1
     with:
       node-version: "22"
 ```
@@ -168,7 +168,7 @@ on:
 jobs:
   test-a11y:
     if: contains(github.event.pull_request.labels.*.name, 'Run a11y')
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-a11y.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-a11y.yml@v1
     with:
       node-version: "22"
 ```
@@ -193,7 +193,7 @@ Fails a PR if it touches any file under the configured path prefixes (default: `
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
 ```
 
 **Multiple gated paths:**
@@ -201,7 +201,7 @@ jobs:
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       gated-paths: |
         assets/build/
@@ -214,7 +214,7 @@ jobs:
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       gated-paths: "assets/build/"
       working-dir: "packages/admin-ui"
@@ -260,7 +260,7 @@ on:
     tags: ["v*"]
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       tag: ${{ github.ref_name }}
     secrets:
@@ -283,7 +283,7 @@ on:
         default: "v0.0.0-test"
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       # Manual run → use the dispatch input; tag push → the pushed tag.
       tag: ${{ github.event.inputs.test_tag || github.ref_name }}
@@ -310,14 +310,14 @@ A green `ci-build.yml` run only proves the build did not crash — not that the 
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: "plugin-dist"
       artifact-path: "dist/my-plugin/"   # a complete installable plugin dir, not bare build/
   test-artifact:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
     with:
       artifact-name: "plugin-dist"
       slug: "my-plugin"
@@ -329,7 +329,7 @@ jobs:
 jobs:
   test-artifact:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
     with:
       artifact-name: "theme-dist"
       slug: "my-theme"
@@ -364,7 +364,7 @@ on:
       - "v*.*.*"
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: "release"
@@ -372,7 +372,7 @@ jobs:
     needs: build
     permissions:
       contents: write
-    uses: rtCamp/shared-workflows/.github/workflows/cd-github-release.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-github-release.yml@v1
     with:
       tag: ${{ github.ref_name }}
       artifact-name: "release"
@@ -402,14 +402,14 @@ permissions:
   contents: read
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: s3-build
       # build-command / artifact-path must produce exactly one .zip in the artifact.
   deploy:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/cd-s3.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-s3.yml@v1
     with:
       tag: ${{ github.ref_name }}
       artifact-name: s3-build
