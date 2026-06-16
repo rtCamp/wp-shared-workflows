@@ -74,8 +74,9 @@ jobs:
               exit 1
             fi
           fi
-          shopt -s nullglob
-          zips=(artifact/*.zip)
+          # Search recursively: download-artifact preserves the producer's
+          # directory structure, so the zip may sit under a subdirectory.
+          mapfile -d '' zips < <(find artifact -type f -name '*.zip' -print0)
           if [ ${#zips[@]} -eq 0 ]; then
             echo "::error::No .zip file found in the downloaded artifact"
             exit 1
