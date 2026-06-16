@@ -363,7 +363,7 @@ on:
     tags: ["v*"]
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       tag: ${{ github.ref_name }}
     secrets:
@@ -386,7 +386,7 @@ on:
         default: "v0.0.0-test"
 jobs:
   split:
-    uses: rtCamp/shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-split-composer-packages.yml@v1
     with:
       # Manual run → use the dispatch input; tag push → the pushed tag.
       tag: ${{ github.event.inputs.test_tag || github.ref_name }}
@@ -413,14 +413,14 @@ A green `ci-build.yml` run only proves the build did not crash — not that the 
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: "plugin-dist"
       artifact-path: "dist/my-plugin/"   # a complete installable plugin dir, not bare build/
   test-artifact:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
     with:
       artifact-name: "plugin-dist"
       slug: "my-plugin"
@@ -432,7 +432,7 @@ jobs:
 jobs:
   test-artifact:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
     with:
       artifact-name: "theme-dist"
       slug: "my-theme"
@@ -467,7 +467,7 @@ on:
       - "v*.*.*"
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: "release"
@@ -505,7 +505,7 @@ permissions:
   contents: read
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       upload-artifact: true
       artifact-name: wp-org-build
@@ -516,7 +516,7 @@ jobs:
       artifact-path: "dist/my-plugin/"
   deploy:
     needs: build
-    uses: rtCamp/shared-workflows/.github/workflows/cd-wp-org.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-wp-org.yml@v1
     with:
       slug: my-plugin
       tag: ${{ github.ref_name }}
