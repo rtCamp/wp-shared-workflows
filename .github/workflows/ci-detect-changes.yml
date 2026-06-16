@@ -77,9 +77,21 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # TODO(wp-tooling publish): switch to the published package once available:
-        #   npm install --global @rtcamp/wp-tooling
-        run: npm install --global "git+https://github.com/rtCamp/wp-tooling.git#release/v1.0.0"
+        # Interim install until @rtcamp/wp-tooling is published to GitHub Packages.
+        # The package lives in the rtCamp/wp-tooling *monorepo* under
+        # node-packages/wp-tooling. npm cannot install a git subdirectory, and the
+        # repo root is a private, bin-less workspace, so `npm i -g <giturl>` / a
+        # git-URL npx invocation expose no CLI. The package has zero runtime deps,
+        # so cloning the subpath and installing it globally just links the bin.
+        # TODO(wp-tooling publish): drop this step and invoke detect-changes via
+        #   npx --yes --package=@rtcamp/wp-tooling wp-tooling detect-changes "${args[@]}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git clone --depth 1 --branch release/v1.0.0 \
+            https://github.com/rtCamp/wp-tooling.git "$tmp"
+          npm install --global "$tmp/node-packages/wp-tooling"
 
       - name: Detect changed files
         id: detect

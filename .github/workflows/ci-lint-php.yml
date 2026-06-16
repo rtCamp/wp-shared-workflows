@@ -85,8 +85,10 @@ jobs:
         env:
           CHANGED_FILES: ${{ inputs.changed-files }}
         run: |
+          set -euo pipefail
           if [ -n "$CHANGED_FILES" ]; then
             tmp_list=$(mktemp)
+            trap 'rm -f "$tmp_list"' EXIT
             printf '%s\n' "$CHANGED_FILES" > "$tmp_list"
             ${{ inputs.phpcs-command }} --file-list="$tmp_list" \
               -q --report=checkstyle \

@@ -9,7 +9,7 @@
 
 ## Summary
 
-Every rtCamp WordPress project that ships UI runs the same accessibility regression check — pa11y-ci against the built site served by `@wordpress/env`. The wiring (build → wp-env start → pa11y → wp-env stop) is tedious to maintain and copy-pasted across consumers; some projects skip a11y entirely as a result. This task adds `ci-test-a11y.yml` — a single reusable workflow that captures that sequence with `if: always()` cleanup, so every consumer can adopt one canonical implementation via `uses: rtCamp/shared-workflows/.github/workflows/ci-test-a11y.yml@v1`. The reusable workflow stays trigger-agnostic; consumers wire the `Run a11y` label gate at the caller level per CLAUDE.md.
+Every rtCamp WordPress project that ships UI runs the same accessibility regression check — pa11y-ci against the built site served by `@wordpress/env`. The wiring (build → wp-env start → pa11y → wp-env stop) is tedious to maintain and copy-pasted across consumers; some projects skip a11y entirely as a result. This task adds `ci-test-a11y.yml` — a single reusable workflow that captures that sequence with `if: always()` cleanup, so every consumer can adopt one canonical implementation via `uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-a11y.yml@v1`. The reusable workflow stays trigger-agnostic; consumers wire the `Run a11y` label gate at the caller level per CLAUDE.md.
 
 ---
 

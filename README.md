@@ -1,6 +1,6 @@
-# shared-workflows
+# wp-shared-workflows
 
-Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — zero JavaScript. Consumed by every rtCamp repo via `uses: rtCamp/shared-workflows/.github/workflows/<name>.yml@v1`.
+Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — zero JavaScript. Consumed by every rtCamp repo via `uses: rtCamp/wp-shared-workflows/.github/workflows/<name>.yml@v1`.
 
 ## What's inside
 
@@ -24,7 +24,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   ci:
-    uses: rtCamp/shared-workflows/.github/workflows/wp-ci.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
     with:
       php-version: "8.3"
       node-version: "22"
@@ -40,19 +40,19 @@ Buckets the files changed in a PR or push and exposes, per language bucket, both
 ```yaml
 jobs:
   detect:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-detect-changes.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-detect-changes.yml@v1
 
   lint-css:
     needs: detect
     if: ${{ needs.detect.outputs.css-count > 0 }}
-    uses: rtCamp/shared-workflows/.github/workflows/ci-lint-css.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-css.yml@v1
     with:
       changed-files: ${{ needs.detect.outputs.css-files }}
 
   lint-php:
     needs: detect
     if: ${{ needs.detect.outputs.php-count > 0 }}
-    uses: rtCamp/shared-workflows/.github/workflows/ci-lint-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-php.yml@v1
     with:
       changed-files: ${{ needs.detect.outputs.php-files }}
 ```
@@ -78,7 +78,7 @@ Runs Stylelint over the project, or only over the files in `changed-files` when 
 ```yaml
 jobs:
   lint-css:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-lint-css.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-css.yml@v1
     with:
       node-version: "22"
 ```
@@ -97,7 +97,7 @@ Runs ESLint, with optional `package.json` validation. `changed-files` scopes ESL
 ```yaml
 jobs:
   lint-js:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-lint-js.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-js.yml@v1
     with:
       node-version: "22"
 ```
@@ -117,7 +117,7 @@ Runs PHPCS with `cs2pr` annotations and, when `enable-phpstan` is true, PHPStan.
 ```yaml
 jobs:
   lint-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-lint-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-php.yml@v1
     with:
       php-version: "8.3"
       enable-phpstan: true
@@ -145,7 +145,7 @@ Runs the consumer's production build, with an optional artifact upload for downs
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
 ```
@@ -155,7 +155,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
       upload-artifact: true
@@ -166,7 +166,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       node-version: "22"
       install-composer-deps: true
@@ -179,7 +179,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
     with:
       install-node-deps: false
       install-composer-deps: true
@@ -210,7 +210,7 @@ Runs PHPUnit either against a real WordPress environment via [`@wordpress/env`](
 ```yaml
 jobs:
   test-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
     with:
       php-version: "8.3"
 ```
@@ -220,7 +220,7 @@ jobs:
 ```yaml
 jobs:
   test-php:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
     with:
       php-version: "8.3"
       use-wp-env: false
@@ -246,7 +246,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   test-js:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-js.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-js.yml@v1
     with:
       node-version: "22"
 ```
@@ -271,7 +271,7 @@ on:
 jobs:
   test-a11y:
     if: contains(github.event.pull_request.labels.*.name, 'Run a11y')
-    uses: rtCamp/shared-workflows/.github/workflows/ci-test-a11y.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-a11y.yml@v1
     with:
       node-version: "22"
 ```
@@ -296,7 +296,7 @@ Fails a PR if it touches any file under the configured path prefixes (default: `
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
 ```
 
 **Multiple gated paths:**
@@ -304,7 +304,7 @@ jobs:
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       gated-paths: |
         assets/build/
@@ -317,7 +317,7 @@ jobs:
 ```yaml
 jobs:
   artifact-gate:
-    uses: rtCamp/shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       gated-paths: "assets/build/"
       working-dir: "packages/admin-ui"

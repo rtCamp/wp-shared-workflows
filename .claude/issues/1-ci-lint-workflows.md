@@ -9,7 +9,7 @@
 
 ## Summary
 
-Every rtCamp WordPress project duplicates the same lint pipeline (the copy-pasted `Test and Measure` workflow, with drift). This issue centralises the four pre-CI lint stages — changed-file detection plus CSS / JS / PHP linting — into individually callable reusable workflows so every consumer adopts one canonical implementation via `uses: rtCamp/shared-workflows/.github/workflows/ci-*.yml@v1`.
+Every rtCamp WordPress project duplicates the same lint pipeline (the copy-pasted `Test and Measure` workflow, with drift). This issue centralises the four pre-CI lint stages — changed-file detection plus CSS / JS / PHP linting — into individually callable reusable workflows so every consumer adopts one canonical implementation via `uses: rtCamp/wp-shared-workflows/.github/workflows/ci-*.yml@v1`.
 
 ---
 

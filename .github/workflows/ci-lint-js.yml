@@ -49,7 +49,7 @@ jobs:
 
       - name: Validate package.json
         if: ${{ inputs.validate-package-json }}
-        run: npm run lint:package-json
+        run: npm run lint:package-json --if-present
 
       - name: Run ESLint
         shell: bash
@@ -57,7 +57,7 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed-files }}
         run: |
           if [ -n "$CHANGED_FILES" ]; then
-            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx eslint
+            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx --no-install eslint --
           else
             ${{ inputs.lint-command }}
           fi
