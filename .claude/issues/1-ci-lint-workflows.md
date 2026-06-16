@@ -1,6 +1,6 @@
 # Issue #1 — Add detect-changes + lint-css/js/php reusable workflows
 
-**Status:** in-progress <!-- in-progress | in-review | done -->
+**Status:** in-review <!-- in-progress | in-review | done -->
 **Branch:** `v1.0.0/task/ci-lint-workflows`
 **PR:** #2
 **Assignee:** @Adi-ty
@@ -16,7 +16,7 @@ Every rtCamp WordPress project duplicates the same lint pipeline (the copy-paste
 ## Decisions made
 
 - [2026-05-29] `ci-detect-changes.yml` wraps the `wp-tooling detect-changes` CLI rather than re-implementing the legacy git-diff bash dance. Base-ref resolution (PR via `GITHUB_BASE_REF`, push via the event `before` SHA / `HEAD~1`), bucket regexes, and the ignore default all live in the CLI — the workflow only passes flags and promotes outputs.
-- [2026-05-29] wp-tooling is installed with `npm install --global "git+https://github.com/rtCamp/wp-tooling.git#release/v1.0.0"`, mirroring `version-monitor.yml`. It is not published to a public registry yet (GitHub Packages, `access: restricted`), so a global git install pinned to `release/v1.0.0` is the stopgap. No `npm ci` / `cache: npm` — the CLI has zero runtime deps.
+- [2026-05-29] wp-tooling is installed by cloning `https://github.com/rtCamp/wp-tooling.git` at `release/v1.0.0` and running `npm install --global` on the monorepo subpath `node-packages/wp-tooling`. npm can't install a git subdirectory, and the repo root is a private, bin-less workspace, so a plain `npm i -g <git-url>` exposes no CLI. The package has zero runtime deps, so the global install just links the `wp-tooling` bin (no `npm ci` / `cache: npm`). Interim stopgap until `@rtcamp/wp-tooling` is published (GitHub Packages, `access: restricted`); because the repo is private the clone needs a token, so detect-changes won't run green in a consumer until publish — verified end-to-end via `act`.
 - [2026-05-29] Detection runs with `--output github --include-files`, so the workflow exposes both per-bucket counts (for gating) and per-bucket file lists (`css-files`, `js-files`, `php-files`, `gha-files`). The `--include-files` support is wp-tooling#7, now on `release/v1.0.0`.
 - [2026-05-29] The three lint workflows each accept a `changed-files` input: non-empty lints only those paths, empty runs the whole-project `lint-command`. This is what makes the detector's `*-files` outputs useful — addresses @AnuragVasanwala's review asks (lint only updated files for CSS/JS/PHP; include exact file paths). For PHP, `changed-files` scopes PHPCS only; PHPStan always runs whole-project (cross-file analysis).
 - [2026-05-29] `ignore-paths` / `base-ref` flags are only passed to the CLI when non-empty. An empty `--ignore` *disables* ignoring in the CLI, so omitting the flag (the default) correctly falls through to the CLI's built-in ignore set.
