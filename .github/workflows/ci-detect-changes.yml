@@ -1,0 +1,121 @@
+name: CI / Detect Changes
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version used to run the wp-tooling CLI."
+        type: string
+        default: "22"
+      ignore-paths:
+        description: "Regex of paths to exclude from the counts and file lists. Empty uses the CLI's built-in ignore set."
+        type: string
+        default: ""
+      base-ref:
+        description: "Explicit git ref to diff HEAD against. Empty lets the CLI resolve it from the PR base or push event."
+        type: string
+        default: ""
+    secrets:
+      wp-tooling-token:
+        description: "Token with read access to the private rtCamp/wp-tooling repo, used to clone the interim CLI. Required while that repo is private; omit once @rtcamp/wp-tooling is published or public."
+        required: false
+    outputs:
+      total-count:
+        description: "Number of changed files after the ignore filter."
+        value: ${{ jobs.detect.outputs.total-count }}
+      ignored-count:
+        description: "Number of changed files dropped by the ignore filter."
+        value: ${{ jobs.detect.outputs.ignored-count }}
+      css-count:
+        description: "Number of changed CSS/SCSS files."
+        value: ${{ jobs.detect.outputs.css-count }}
+      js-count:
+        description: "Number of changed JS files."
+        value: ${{ jobs.detect.outputs.js-count }}
+      php-count:
+        description: "Number of changed PHP files."
+        value: ${{ jobs.detect.outputs.php-count }}
+      gha-count:
+        description: "Number of changed GitHub Actions workflow files."
+        value: ${{ jobs.detect.outputs.gha-count }}
+      css-files:
+        description: "Newline-separated changed CSS/SCSS files. Pass straight into ci-lint-css.yml's changed-files."
+        value: ${{ jobs.detect.outputs.css-files }}
+      js-files:
+        description: "Newline-separated changed JS files. Pass straight into ci-lint-js.yml's changed-files."
+        value: ${{ jobs.detect.outputs.js-files }}
+      php-files:
+        description: "Newline-separated changed PHP files. Pass straight into ci-lint-php.yml's changed-files."
+        value: ${{ jobs.detect.outputs.php-files }}
+      gha-files:
+        description: "Newline-separated changed GitHub Actions workflow files."
+        value: ${{ jobs.detect.outputs.gha-files }}
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      total-count: ${{ steps.detect.outputs.total-count }}
+      ignored-count: ${{ steps.detect.outputs.ignored-count }}
+      css-count: ${{ steps.detect.outputs.css-count }}
+      js-count: ${{ steps.detect.outputs.js-count }}
+      php-count: ${{ steps.detect.outputs.php-count }}
+      gha-count: ${{ steps.detect.outputs.gha-count }}
+      css-files: ${{ steps.detect.outputs.css-files }}
+      js-files: ${{ steps.detect.outputs.js-files }}
+      php-files: ${{ steps.detect.outputs.php-files }}
+      gha-files: ${{ steps.detect.outputs.gha-files }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install wp-tooling
+        # Interim install until @rtcamp/wp-tooling is published. The CLI lives in the
+        # rtCamp/wp-tooling monorepo under node-packages/wp-tooling (npm can't install a git
+        # subdirectory), so clone the branch and install the subpath into a job-local prefix
+        # on PATH — no global. --install-links copies (vs symlinks) so the temp clone can be
+        # removed; the repo is private, so authenticate with wp-tooling-token when provided.
+        # TODO(wp-tooling publish): replace with `npm install --prefix … @rtcamp/wp-tooling`.
+        shell: bash
+        env:
+          WP_TOOLING_TOKEN: ${{ secrets.wp-tooling-token }}
+        run: |
+          set -euo pipefail
+          src="$(mktemp -d)"
+          trap 'rm -rf "$src"' EXIT
+          repo="https://github.com/rtCamp/wp-tooling.git"
+          if [ -n "${WP_TOOLING_TOKEN:-}" ]; then
+            repo="https://x-access-token:${WP_TOOLING_TOKEN}@github.com/rtCamp/wp-tooling.git"
+          fi
+          git clone --depth 1 --branch release/v1.0.0 "$repo" "$src"
+          prefix="$RUNNER_TEMP/wp-tooling"
+          npm install --install-links --prefix "$prefix" "$src/node-packages/wp-tooling"
+          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Detect changed files
+        id: detect
+        shell: bash
+        env:
+          IGNORE_PATHS: ${{ inputs.ignore-paths }}
+          BASE_REF: ${{ inputs.base-ref }}
+        run: |
+          set -euo pipefail
+          args=(--output github --include-files)
+          if [ -n "$IGNORE_PATHS" ]; then
+            args+=(--ignore "$IGNORE_PATHS")
+          fi
+          if [ -n "$BASE_REF" ]; then
+            args+=(--base "$BASE_REF")
+          fi
+          wp-tooling detect-changes "${args[@]}"

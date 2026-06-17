@@ -1,0 +1,153 @@
+name: CI / Test Build Artifact
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: "Artifact to download. Must match the artifact-name uploaded by ci-build.yml in the same run."
+        type: string
+        required: true
+      slug:
+        description: "Plugin or theme directory slug to activate inside wp-env."
+        type: string
+        required: true
+      node-version:
+        description: "Node.js version used to run @wordpress/env."
+        type: string
+        default: "22"
+      php-version:
+        description: "PHP version wp-env boots with."
+        type: string
+        default: "8.3"
+      wp-version:
+        description: "WordPress version wp-env boots with. 'latest' uses the newest stable release."
+        type: string
+        default: "latest"
+      install-path:
+        description: "Destination under the WordPress root to mount the artifact. A path ending in 'themes' activates a theme; otherwise a plugin."
+        type: string
+        default: "wp-content/plugins"
+      smoke-script:
+        description: "Optional path inside the artifact to a shell script, run in the wp-env container after activation. Empty skips the step."
+        type: string
+        default: ""
+      doctor-ignore-checks:
+        description: "Comma-separated wp doctor check names excluded from the error gate. Defaults to production-oriented checks that wp-env's dev defaults always trip (e.g. WP_DEBUG being on)."
+        type: string
+        default: "constant-wp-debug-falsy"
+
+permissions:
+  contents: read
+
+jobs:
+  test-build-artifact:
+    name: Boot artifact in wp-env
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Download build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: artifact
+
+      - name: Write wp-env override
+        shell: bash
+        env:
+          WP_VERSION: ${{ inputs.wp-version }}
+          PHP_VERSION: ${{ inputs.php-version }}
+          INSTALL_PATH: ${{ inputs.install-path }}
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+
+          # Mount only the artifact; a consumer's .wp-env.json usually mounts the dev source (".") at the same path.
+          jq -n \
+            --arg wp "$WP_VERSION" \
+            --arg php "$PHP_VERSION" \
+            --arg dest "${INSTALL_PATH%/}/${SLUG}" \
+            '{
+               core: (if $wp == "latest" then null else "WordPress/WordPress#\($wp)" end),
+               phpVersion: $php,
+               plugins: [],
+               themes: [],
+               mappings: { ($dest): "./artifact" }
+             }' > .wp-env.override.json
+
+          echo "Generated .wp-env.override.json:"
+          cat .wp-env.override.json
+
+      - name: Start wp-env
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes @wordpress/env start --update
+
+      - name: Activate plugin or theme
+        shell: bash
+        env:
+          INSTALL_PATH: ${{ inputs.install-path }}
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+
+          case "${INSTALL_PATH%/}" in
+            */themes) TYPE=theme ;;
+            *) TYPE=plugin ;;
+          esac
+
+          echo "Activating ${TYPE}: ${SLUG}"
+          npx --yes @wordpress/env run cli wp "$TYPE" activate "$SLUG"
+
+      - name: Run wp doctor
+        shell: bash
+        env:
+          DOCTOR_IGNORE_CHECKS: ${{ inputs.doctor-ignore-checks }}
+        run: |
+          set -euo pipefail
+
+          npx --yes @wordpress/env run cli wp package install wp-cli/doctor-command:@stable
+
+          # `wp doctor check` exits 1 on an error check; capture anyway (|| true) so the report prints before we gate.
+          result=$(npx --yes @wordpress/env run cli wp doctor check --all --format=json) || true
+          echo "$result"
+
+          # wp-env enables WP_DEBUG by default, tripping production-only checks unrelated to the artifact; drop those.
+          failed=$(jq -c --arg ignore "$DOCTOR_IGNORE_CHECKS" '
+            ($ignore | split(",") | map(gsub("(^\\s+|\\s+$)"; "")) | map(select(length > 0))) as $skip
+            | [ .[] | select(.status == "error") | select([.name] | inside($skip) | not) ]
+          ' <<<"$result")
+
+          count=$(jq 'length' <<<"$failed")
+          if [[ "$count" -gt 0 ]]; then
+            echo "::error::wp doctor reported ${count} error-severity check(s):"
+            jq -r '.[] | "  - \(.name): \(.message)"' <<<"$failed"
+            exit 1
+          fi
+
+          echo "wp doctor passed (no error-severity checks; ignored: ${DOCTOR_IGNORE_CHECKS:-none})."
+
+      - name: Run smoke script
+        if: ${{ inputs.smoke-script != '' }}
+        shell: bash
+        env:
+          INSTALL_PATH: ${{ inputs.install-path }}
+          SLUG: ${{ inputs.slug }}
+          SMOKE_SCRIPT: ${{ inputs.smoke-script }}
+        run: |
+          set -euo pipefail
+          npx --yes @wordpress/env run cli bash "${INSTALL_PATH%/}/${SLUG}/${SMOKE_SCRIPT}"
+
+      - name: Stop wp-env
+        if: always()
+        timeout-minutes: 2
+        shell: bash
+        run: npx --yes @wordpress/env stop

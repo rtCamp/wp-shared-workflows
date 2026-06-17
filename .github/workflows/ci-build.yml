@@ -1,0 +1,98 @@
+name: CI / Build
+
+on:
+  workflow_call:
+    inputs:
+      install-node-deps:
+        description: "Install Node dependencies before the build."
+        type: boolean
+        default: true
+      node-version:
+        description: "Node.js version (used only when install-node-deps is true)."
+        type: string
+        default: "22"
+      install-composer-deps:
+        description: "Install Composer dependencies before the build."
+        type: boolean
+        default: false
+      php-version:
+        description: "PHP version (used only when install-composer-deps is true)."
+        type: string
+        default: "8.3"
+      composer-flags:
+        description: "Flags passed to composer install."
+        type: string
+        default: "--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
+      build-command:
+        description: "Shell command that produces the production build. When empty, defaults to 'npm run build:prod' if install-node-deps is true, otherwise 'composer run-script build'."
+        type: string
+        default: ""
+      upload-artifact:
+        description: "Upload the build output as a GitHub Actions artifact for downstream jobs."
+        type: boolean
+        default: false
+      artifact-name:
+        description: "Name used when uploading the artifact (and when a CD job downloads it)."
+        type: string
+        default: "build"
+      artifact-path:
+        description: "Path to upload. Relative to working-dir."
+        type: string
+        default: "build/"
+      retention-days:
+        description: "Days to keep the artifact before GitHub deletes it."
+        type: number
+        default: 7
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Node.js
+        if: ${{ inputs.install-node-deps }}
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Set up PHP
+        if: ${{ inputs.install-composer-deps }}
+        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          coverage: none
+          tools: composer
+
+      - name: Install Composer dependencies
+        if: ${{ inputs.install-composer-deps }}
+        run: composer install ${{ inputs.composer-flags }}
+
+      - name: Install npm dependencies
+        if: ${{ inputs.install-node-deps }}
+        run: npm ci
+
+      - name: Build production assets
+        run: ${{ inputs.build-command != '' && inputs.build-command || (inputs.install-node-deps && 'npm run build:prod' || 'composer run-script build') }}
+
+      - name: Upload build artifact
+        if: ${{ inputs.upload-artifact }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-dir }}/${{ inputs.artifact-path }}
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
