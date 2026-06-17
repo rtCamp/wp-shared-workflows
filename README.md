@@ -41,6 +41,9 @@ Buckets the files changed in a PR or push and exposes, per language bucket, both
 jobs:
   detect:
     uses: rtCamp/wp-shared-workflows/.github/workflows/ci-detect-changes.yml@v1
+    secrets:
+      # Read access to the private rtCamp/wp-tooling repo until it is published.
+      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
 
   lint-css:
     needs: detect
@@ -68,6 +71,8 @@ jobs:
 | `total-count` / `ignored-count`                   | Changed files kept after / dropped by the ignore filter.                           |
 | `css-count` / `js-count` / `php-count` / `gha-count` | Per-bucket change counts. Gate downstream jobs on these.                        |
 | `css-files` / `js-files` / `php-files` / `gha-files` | Newline-separated paths per bucket, ready for the lint workflows' `changed-files`. |
+
+**Secret:** `wp-tooling-token` (optional) — token with read access to the private `rtCamp/wp-tooling` repo, used to install the interim CLI. Required until `@rtcamp/wp-tooling` is published; omit once it is public.
 
 wp-tooling is installed from its `release/v1.0.0` branch until it is published to a registry. The workflow runs unconditionally — count-based gating is the caller's (or orchestrator's) job, not the detector's.
 
