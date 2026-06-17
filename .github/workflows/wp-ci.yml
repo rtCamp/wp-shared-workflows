@@ -1,0 +1,192 @@
+name: CI / Orchestrator
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: "Project shape that selects the job preset: plugin | theme | package."
+        type: string
+        required: true
+      skip:
+        description: "Comma-separated job ids to drop, e.g. 'a11y,test-php'. Ids: lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact, a11y."
+        type: string
+        default: ""
+      enable-phpstan:
+        description: "Run PHPStan (whole-project) after PHPCS in the lint-php job."
+        type: boolean
+        default: false
+      use-wp-env:
+        description: "Run test-php under @wordpress/env (default). Set false for a standalone Composer library that runs PHPUnit without WordPress."
+        type: boolean
+        default: true
+      php-versions:
+        description: "JSON array of PHP versions for test-php, crossed with wp-versions, e.g. '[\"8.2\",\"8.3\"]'. Must be non-empty — use skip: test-php to disable."
+        type: string
+        default: '["8.3"]'
+      wp-versions:
+        description: "JSON array of WordPress core versions for wp-env, crossed with php-versions, e.g. '[\"6.8\",\"6.9\"]'. An empty-string entry uses .wp-env.json. Ignored when use-wp-env is false."
+        type: string
+        default: '[""]'
+      test-php-exclude:
+        description: "JSON array of {php, wp} cells to drop from the php-versions × wp-versions product, e.g. '[{\"php\":\"8.1\",\"wp\":\"6.9\"}]'."
+        type: string
+        default: '[]'
+      build-artifact-path:
+        description: "Path to the packaged, installable plugin/theme dir the build produces, e.g. 'dist/my-plugin/'. Required to run the build-artifact install test; empty skips it (the default build emits bare build/, which is not installable)."
+        type: string
+        default: ""
+      build-artifact-slug:
+        description: "Plugin/theme slug to activate in the build-artifact test. Empty uses the repo name."
+        type: string
+        default: ""
+    secrets:
+      wp-tooling-token:
+        description: "Token with read access to the private rtCamp/wp-tooling repo, forwarded to detect-changes to install the interim CLI. Required while that repo is private."
+        required: false
+
+# Cancel an in-progress run when the same ref is pushed again (e.g. a force-push).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Fail fast on a bad project-type or matrix input — a typo otherwise silently runs nothing.
+  validate-inputs:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check project-type and test-php matrix inputs
+        env:
+          PROJECT_TYPE: ${{ inputs.project-type }}
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+          WP_VERSIONS: ${{ inputs.wp-versions }}
+          TEST_PHP_EXCLUDE: ${{ inputs.test-php-exclude }}
+        run: |
+          case "$PROJECT_TYPE" in
+            plugin|theme|package) ;;
+            *) echo "::error::project-type must be one of: plugin, theme, package (got '$PROJECT_TYPE')"; exit 1 ;;
+          esac
+          echo "$PHP_VERSIONS" | jq -e 'type == "array" and length > 0' >/dev/null \
+            || { echo "::error::php-versions must be a non-empty JSON array (got '$PHP_VERSIONS') — use skip: test-php to disable PHP tests"; exit 1; }
+          echo "$WP_VERSIONS" | jq -e 'type == "array" and length > 0' >/dev/null \
+            || { echo "::error::wp-versions must be a non-empty JSON array (got '$WP_VERSIONS')"; exit 1; }
+          echo "$TEST_PHP_EXCLUDE" | jq -e 'type == "array"' >/dev/null \
+            || { echo "::error::test-php-exclude must be a JSON array (got '$TEST_PHP_EXCLUDE')"; exit 1; }
+
+  # Backbone: never skippable. Emits the per-bucket change counts and file lists the
+  # jobs below gate on.
+  detect-changes:
+    name: Detect changes
+    needs: [validate-inputs]
+    uses: ./.github/workflows/ci-detect-changes.yml
+    secrets:
+      wp-tooling-token: ${{ secrets.wp-tooling-token }}
+
+  lint-css:
+    name: Lint CSS
+    needs: [detect-changes]
+    if: >-
+      needs.detect-changes.outputs.css-count > 0
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && !contains(format(',{0},', inputs.skip), ',lint-css,')
+    uses: ./.github/workflows/ci-lint-css.yml
+    with:
+      changed-files: ${{ needs.detect-changes.outputs.css-files }}
+
+  lint-js:
+    name: Lint JS
+    needs: [detect-changes]
+    if: >-
+      needs.detect-changes.outputs.js-count > 0
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && !contains(format(',{0},', inputs.skip), ',lint-js,')
+    uses: ./.github/workflows/ci-lint-js.yml
+    with:
+      changed-files: ${{ needs.detect-changes.outputs.js-files }}
+
+  lint-php:
+    name: Lint PHP
+    needs: [detect-changes]
+    if: >-
+      needs.detect-changes.outputs.php-count > 0
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme' || inputs.project-type == 'package')
+      && !contains(format(',{0},', inputs.skip), ',lint-php,')
+    uses: ./.github/workflows/ci-lint-php.yml
+    with:
+      changed-files: ${{ needs.detect-changes.outputs.php-files }}
+      enable-phpstan: ${{ inputs.enable-phpstan }}
+
+  test-js:
+    name: Test JS
+    needs: [detect-changes]
+    if: >-
+      needs.detect-changes.outputs.js-count > 0
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && !contains(format(',{0},', inputs.skip), ',test-js,')
+    uses: ./.github/workflows/ci-test-js.yml
+
+  test-php:
+    name: Test PHP
+    needs: [detect-changes]
+    if: >-
+      needs.detect-changes.outputs.php-count > 0
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'package')
+      && !contains(format(',{0},', inputs.skip), ',test-php,')
+    # Matrix: php-versions × wp-versions, minus test-php-exclude cells. With use-wp-env
+    # (default) each cell boots @wordpress/env, pinning PHP + WP core; with use-wp-env
+    # false it runs standalone PHPUnit and the wp dimension is inert.
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ${{ fromJSON(inputs.php-versions) }}
+        wp: ${{ fromJSON(inputs.wp-versions) }}
+        exclude: ${{ fromJSON(inputs.test-php-exclude) }}
+    uses: ./.github/workflows/ci-test-php.yml
+    with:
+      php-version: ${{ matrix.php }}
+      wp-version: ${{ matrix.wp }}
+      use-wp-env: ${{ inputs.use-wp-env }}
+
+  build:
+    name: Build
+    needs: [detect-changes]
+    if: >-
+      (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && !contains(format(',{0},', inputs.skip), ',build,')
+    uses: ./.github/workflows/ci-build.yml
+    with:
+      # Only upload when build-artifact runs (it consumes this); otherwise build just compiles.
+      upload-artifact: ${{ inputs.build-artifact-path != '' }}
+      artifact-name: wp-ci-build
+      artifact-path: ${{ inputs.build-artifact-path }}
+      retention-days: 1
+
+  # Boots the packaged artifact in real WordPress to prove it installs. Opt-in: runs only
+  # when build-artifact-path points at an installable dir, since the default build emits
+  # bare build/. slug defaults to the repo name; install-path follows project-type.
+  build-artifact:
+    name: Test build artifact
+    needs: [detect-changes, build]
+    if: >-
+      inputs.build-artifact-path != ''
+      && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && !contains(format(',{0},', inputs.skip), ',build-artifact,')
+    uses: ./.github/workflows/ci-test-build-artifact.yml
+    with:
+      artifact-name: wp-ci-build
+      slug: ${{ inputs.build-artifact-slug != '' && inputs.build-artifact-slug || github.event.repository.name }}
+      install-path: ${{ inputs.project-type == 'theme' && 'wp-content/themes' || 'wp-content/plugins' }}
+
+  a11y:
+    name: Test accessibility
+    needs: [detect-changes]
+    if: >-
+      (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && !contains(format(',{0},', inputs.skip), ',a11y,')
+    uses: ./.github/workflows/ci-test-a11y.yml
