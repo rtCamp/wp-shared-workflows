@@ -24,6 +24,7 @@ Add a `version-monitor.yml` reusable workflow that runs on a monthly schedule, c
   - `--detect`'s exit-1-with-partial-results is captured (`set +e` + `$?`) so `bash -e` no longer aborts the step and discards the month's findings; valid JSON proceeds to a PR, a non-zero exit records `detectors_errored=true`.
   - All-major (or all-unmatched) month produces no diff → no PR; a guard step now fails the run with the report printed so the bumps are surfaced, not silently green. A second guard fails the run when a detector errored, honouring wp-tooling's "never green while blind" contract while still letting the partial-results PR open. README/CHANGELOG updated to match.
   - Install step left unchanged — `@rtcamp/wp-tooling` is still unpublished (`TODO(wp-tooling#10)`).
+- [2026-06-17] **Install reworked for production use.** Clones `release/v1.0.0` and installs the `node-packages/wp-tooling` subpath into a job-local prefix on PATH via `npm install --install-links --prefix` (no global; `--install-links` copies, not symlinks, so the temp clone is removed via an EXIT trap). Added an optional `wp-tooling-token` workflow_call secret to authenticate the clone — `rtCamp/wp-tooling` is private and `GITHUB_TOKEN`/same-org can't read it. Mirrors `ci-detect-changes.yml`. Immutable-ref (SHA/tag) pin deferred until wp-tooling stabilises.
 
 ---
 
@@ -61,7 +62,7 @@ _(none)_
 
 ## Notes for the reviewer
 
-- Install step intentionally uses the branch URL while `@rtcamp/wp-tooling` is unpublished; the `TODO(wp-tooling#10)` comment marks the switch point.
+- Install clones `release/v1.0.0` + copy-installs the subpath into a job-local prefix, authenticated by the optional `wp-tooling-token` secret (private repo). Consumers must pass that secret until `@rtcamp/wp-tooling` is published; clone is pinned to the branch only (immutable-ref pin deferred).
 - End-to-end PR creation (the `peter-evans/create-pull-request` step) is verified structurally but requires real CI for a live smoke test.
 
 ---

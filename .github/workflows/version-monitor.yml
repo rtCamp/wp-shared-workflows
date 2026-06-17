@@ -19,6 +19,10 @@ on:
         description: "Comma-separated GitHub usernames to assign to the draft PR"
         type: string
         default: ""
+    secrets:
+      wp-tooling-token:
+        description: "Token with read access to the private rtCamp/wp-tooling repo, used to clone the interim CLI. Required while that repo is private."
+        required: false
 
 # Serialise runs per consumer repo so a scheduled run and a manual dispatch can't
 # race on the same version-monitor/YYYY-MM branch.
@@ -52,19 +56,24 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # Interim install until @rtcamp/wp-tooling is published. The CLI lives in the
-        # rtCamp/wp-tooling monorepo under node-packages/wp-tooling (npm can't install a
-        # git subdirectory), so clone the branch and install the subpath into a job-local
-        # prefix exposed via PATH — no global install (zero runtime deps, just links the bin).
-        # TODO(wp-tooling publish): replace with `npm install --prefix … @rtcamp/wp-tooling`.
+        # Interim until @rtcamp/wp-tooling is published: the CLI is a subpath of the private
+        # rtCamp/wp-tooling monorepo (npm can't install a git subdir), so clone the branch and
+        # copy-install it (--install-links, not a symlink) into a job-local prefix on PATH.
+        # Auth the clone with wp-tooling-token when set; a plain clone works only if public.
         shell: bash
+        env:
+          WP_TOOLING_TOKEN: ${{ secrets.wp-tooling-token }}
         run: |
           set -euo pipefail
-          tmp="$(mktemp -d)"
-          git clone --depth 1 --branch release/v1.0.0 \
-            https://github.com/rtCamp/wp-tooling.git "$tmp"
+          src="$(mktemp -d)"
+          trap 'rm -rf "$src"' EXIT
+          repo="https://github.com/rtCamp/wp-tooling.git"
+          if [ -n "${WP_TOOLING_TOKEN:-}" ]; then
+            repo="https://x-access-token:${WP_TOOLING_TOKEN}@github.com/rtCamp/wp-tooling.git"
+          fi
+          git clone --depth 1 --branch release/v1.0.0 "$repo" "$src"
           prefix="$RUNNER_TEMP/wp-tooling"
-          npm install --prefix "$prefix" "$tmp/node-packages/wp-tooling"
+          npm install --install-links --prefix "$prefix" "$src/node-packages/wp-tooling"
           echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect version updates

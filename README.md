@@ -55,6 +55,9 @@ jobs:
     with:
       base-branch: main
       pr-assignees: "Adi-ty"
+    secrets:
+      # Read access to the private rtCamp/wp-tooling repo until it is published.
+      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
 ```
 
 | Input          | Type   | Default             | Description                                          |
@@ -63,6 +66,8 @@ jobs:
 | `base-branch`  | string | `"main"`            | Branch the draft PR is opened against.               |
 | `pr-label`     | string | `"version-monitor"` | Label applied to the draft PR.                       |
 | `pr-assignees` | string | `""`                | Comma-separated GitHub usernames assigned to the PR. |
+
+**Secret:** `wp-tooling-token` (optional) — token with read access to the private `rtCamp/wp-tooling` repo, used to install the interim CLI. Required until `@rtcamp/wp-tooling` is published; omit once it is public.
 
 The calling job must grant `permissions: contents: write` and `pull-requests: write` so the workflow can push the `version-monitor/YYYY-MM` branch and open the PR, and the repo must have **Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests"** enabled, or PR creation is blocked. Major bumps are never auto-applied — a bare version-string swap is rarely a safe major upgrade — so a month of only major bumps produces no diff and no PR; the run fails with the bump list in the log so they are surfaced rather than passing silently. The run also fails when a detector could not be checked (a PR may still carry the bumps that were found), so a scheduled run is never green while blind.
 
