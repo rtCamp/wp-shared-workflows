@@ -53,17 +53,19 @@ jobs:
 
       - name: Install wp-tooling
         # Interim install until @rtcamp/wp-tooling is published. The CLI lives in the
-        # rtCamp/wp-tooling monorepo under node-packages/wp-tooling; npm can't install a
-        # git subdirectory and the repo root is a bin-less workspace, so clone the branch
-        # and global-install the subpath (zero runtime deps — this just links the bin).
-        # TODO(wp-tooling publish): replace with `npm install --global @rtcamp/wp-tooling`.
+        # rtCamp/wp-tooling monorepo under node-packages/wp-tooling (npm can't install a
+        # git subdirectory), so clone the branch and install the subpath into a job-local
+        # prefix exposed via PATH — no global install (zero runtime deps, just links the bin).
+        # TODO(wp-tooling publish): replace with `npm install --prefix … @rtcamp/wp-tooling`.
         shell: bash
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
           git clone --depth 1 --branch release/v1.0.0 \
             https://github.com/rtCamp/wp-tooling.git "$tmp"
-          npm install --global "$tmp/node-packages/wp-tooling"
+          prefix="$RUNNER_TEMP/wp-tooling"
+          npm install --prefix "$prefix" "$tmp/node-packages/wp-tooling"
+          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect version updates
         id: detect
