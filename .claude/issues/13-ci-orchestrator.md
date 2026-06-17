@@ -79,7 +79,7 @@ WARN  ⚠ You are using Apple M-series chip and you have not specified container
 *DRYRUN* [Detect changes/CI / Detect Changes/Detect changes] 🏁  Job succeeded
 ```
 
-Clean — no errors or warnings.
+Succeeded — no schema or terminating errors. (`act --dryrun` emits a benign non-terminating `git clone` "some refs were not updated" warning while pre-fetching the actions — an `act` quirk, not a workflow failure.)
 
 Gating trace (manual) — expected job set per preset:
 

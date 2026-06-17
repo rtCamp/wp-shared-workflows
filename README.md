@@ -92,7 +92,7 @@ jobs:
 † `build-artifact` runs only when `build-artifact-path` is set — the default `build` output is not an installable directory.
 ‡ `a11y` runs only when `run-a11y: true` — it is slow and needs pa11y config, so gate it on the `Run a11y` label at the caller.
 
-Skippable job ids (for `skip`): `lint-css`, `lint-js`, `lint-php`, `test-js`, `test-php`, `build`, `build-artifact`, `a11y`. `detect-changes` is the backbone and always runs. Matching is comma-exact, so `skip: build` drops `build` but not `build-artifact`.
+Skippable job ids (for `skip`): `lint-css`, `lint-js`, `lint-php`, `test-js`, `test-php`, `build`, `build-artifact`, `a11y`. `validate-inputs` and `detect-changes` always run and aren't skippable. Matching is comma-exact, so `skip: build` drops `build` but not `build-artifact`.
 
 Notes:
 
