@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: rtCamp/shared-workflows/.github/workflows/version-monitor.yml@v1
+    uses: rtCamp/wp-shared-workflows/.github/workflows/version-monitor.yml@v1
     with:
       base-branch: main
       pr-assignees: "Adi-ty"
