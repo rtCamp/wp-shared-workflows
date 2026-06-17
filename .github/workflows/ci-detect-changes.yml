@@ -15,6 +15,10 @@ on:
         description: "Explicit git ref to diff HEAD against. Empty lets the CLI resolve it from the PR base or push event."
         type: string
         default: ""
+    secrets:
+      wp-tooling-token:
+        description: "Token with read access to the private rtCamp/wp-tooling repo, used to clone the interim CLI. Required while that repo is private; omit once @rtcamp/wp-tooling is published or public."
+        required: false
     outputs:
       total-count:
         description: "Number of changed files after the ignore filter."
@@ -77,21 +81,27 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # Interim install until @rtcamp/wp-tooling is published to GitHub Packages.
-        # The package lives in the rtCamp/wp-tooling *monorepo* under
-        # node-packages/wp-tooling. npm cannot install a git subdirectory, and the
-        # repo root is a private, bin-less workspace, so `npm i -g <giturl>` / a
-        # git-URL npx invocation expose no CLI. The package has zero runtime deps,
-        # so cloning the subpath and installing it globally just links the bin.
-        # TODO(wp-tooling publish): drop this step and invoke detect-changes via
-        #   npx --yes --package=@rtcamp/wp-tooling wp-tooling detect-changes "${args[@]}"
+        # Interim install until @rtcamp/wp-tooling is published. The CLI lives in the
+        # rtCamp/wp-tooling monorepo under node-packages/wp-tooling (npm can't install a git
+        # subdirectory), so clone the branch and install the subpath into a job-local prefix
+        # on PATH — no global. --install-links copies (vs symlinks) so the temp clone can be
+        # removed; the repo is private, so authenticate with wp-tooling-token when provided.
+        # TODO(wp-tooling publish): replace with `npm install --prefix … @rtcamp/wp-tooling`.
         shell: bash
+        env:
+          WP_TOOLING_TOKEN: ${{ secrets.wp-tooling-token }}
         run: |
           set -euo pipefail
-          tmp="$(mktemp -d)"
-          git clone --depth 1 --branch release/v1.0.0 \
-            https://github.com/rtCamp/wp-tooling.git "$tmp"
-          npm install --global "$tmp/node-packages/wp-tooling"
+          src="$(mktemp -d)"
+          trap 'rm -rf "$src"' EXIT
+          repo="https://github.com/rtCamp/wp-tooling.git"
+          if [ -n "${WP_TOOLING_TOKEN:-}" ]; then
+            repo="https://x-access-token:${WP_TOOLING_TOKEN}@github.com/rtCamp/wp-tooling.git"
+          fi
+          git clone --depth 1 --branch release/v1.0.0 "$repo" "$src"
+          prefix="$RUNNER_TEMP/wp-tooling"
+          npm install --install-links --prefix "$prefix" "$src/node-packages/wp-tooling"
+          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect changed files
         id: detect
