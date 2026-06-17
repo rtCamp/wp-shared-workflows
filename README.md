@@ -35,7 +35,7 @@ jobs:
 
 ### `version-monitor.yml`: monthly version monitor
 
-Runs on a monthly schedule and opens a draft PR with the version bumps detected across npm, GitHub Actions, PHP, Node, WP-CLI, and container base images — the moving versions Dependabot does not cover. Minor and patch bumps are applied automatically; major bumps are listed in the PR body for manual review rather than applied. Re-runs in the same calendar month update the existing PR instead of opening a duplicate. Detection and patching run through `@rtcamp/wp-tooling version-monitor`; the draft PR is opened and updated with [`peter-evans/create-pull-request`](https://github.com/peter-evans/create-pull-request) (SHA-pinned).
+Runs on a monthly schedule and opens a draft PR with the version bumps detected across npm, GitHub Actions, PHP, Node, WP-CLI, and container base images — the moving versions Dependabot does not cover. Minor and patch bumps are applied automatically; major bumps are listed in the PR body for manual review rather than applied. Re-runs in the same calendar month update the existing PR instead of opening a duplicate. Detection and patching run through `npx wp-tooling version-monitor`; the draft PR is opened and updated with [`peter-evans/create-pull-request`](https://github.com/peter-evans/create-pull-request) (SHA-pinned).
 
 Requires a `.github/version-monitor.yml` config in the consumer repo listing which sources to watch — see [`@rtcamp/wp-tooling`](https://github.com/rtCamp/wp-tooling) for the full schema.
 
