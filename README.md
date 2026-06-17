@@ -33,6 +33,44 @@ jobs:
 
 ## Individual workflows
 
+### `version-monitor.yml`: monthly version monitor
+
+Runs on a monthly schedule and opens a draft PR with the version bumps detected across npm, GitHub Actions, PHP, Node, WP-CLI, and container base images — the moving versions Dependabot does not cover. Minor and patch bumps are applied automatically; major bumps are listed in the PR body for manual review rather than applied. Re-runs in the same calendar month update the existing PR instead of opening a duplicate. Detection and patching run through `npx wp-tooling version-monitor`; the draft PR is opened and updated with [`peter-evans/create-pull-request`](https://github.com/peter-evans/create-pull-request) (SHA-pinned).
+
+Requires a `.github/version-monitor.yml` config in the consumer repo listing which sources to watch — see [`@rtcamp/wp-tooling`](https://github.com/rtCamp/wp-tooling) for the full schema.
+
+```yaml
+# .github/workflows/version-monitor.yml in the consumer
+name: Version Monitor
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # 06:00 UTC, first of each month
+  workflow_dispatch:
+jobs:
+  monitor:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: rtCamp/wp-shared-workflows/.github/workflows/version-monitor.yml@v1
+    with:
+      base-branch: main
+      pr-assignees: "Adi-ty"
+    secrets:
+      # Read access to the private rtCamp/wp-tooling repo until it is published.
+      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
+```
+
+| Input          | Type   | Default             | Description                                          |
+| -------------- | ------ | ------------------- | ---------------------------------------------------- |
+| `node-version` | string | `"22"`              | Node.js version used to install and run wp-tooling.  |
+| `base-branch`  | string | `"main"`            | Branch the draft PR is opened against.               |
+| `pr-label`     | string | `"version-monitor"` | Label applied to the draft PR.                       |
+| `pr-assignees` | string | `""`                | Comma-separated GitHub usernames assigned to the PR. |
+
+**Secret:** `wp-tooling-token` (optional) — token with read access to the private `rtCamp/wp-tooling` repo, used to install the interim CLI. Required until `@rtcamp/wp-tooling` is published; omit once it is public.
+
+The calling job must grant `permissions: contents: write` and `pull-requests: write` so the workflow can push the `version-monitor/YYYY-MM` branch and open the PR, and the repo must have **Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests"** enabled, or PR creation is blocked. Major bumps are never auto-applied — a bare version-string swap is rarely a safe major upgrade — so a month of only major bumps produces no diff and no PR; the run fails with the bump list in the log so they are surfaced rather than passing silently. The run also fails when a detector could not be checked (a PR may still carry the bumps that were found), so a scheduled run is never green while blind.
+
 ### `ci-detect-changes.yml`: changed-file detection
 
 Buckets the files changed in a PR or push and exposes, per language bucket, both a **count** (for job gating) and the **exact file list** (for selective linting). Wraps the [`wp-tooling detect-changes`](https://github.com/rtCamp/wp-tooling) CLI — base-ref resolution and the bucket rules live there. Run it as a pre-run job, then feed its `*-files` outputs into the lint workflows so each one lints only what the PR touched.
