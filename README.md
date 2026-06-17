@@ -54,6 +54,7 @@ jobs:
       # skip: "a11y"         # optional: comma-separated job ids
       # enable-phpstan: true # optional: run PHPStan after PHPCS
       # use-wp-env: false    # optional: standalone PHPUnit for a pure Composer library
+      # run-a11y: ${{ contains(github.event.pull_request.labels.*.name, 'Run a11y') }} # optional: gate a11y on a label
       # Optional: fan PHPUnit across a PHP x WordPress grid. Under the default wp-env
       # each cell pins PHP + WordPress core; drop cells via test-php-exclude — each
       # {php, wp} must match a cell in the product. Omit all three for a single 8.3 leg.
@@ -70,6 +71,7 @@ jobs:
 | `project-type`     | string  | —            | **Required.** `plugin` \| `theme` \| `package` — selects the job preset.                             |
 | `skip`             | string  | `""`         | Comma-separated job ids to drop without forking the orchestrator. Disable PHP tests with `test-php` here — not an empty array. |
 | `enable-phpstan`   | boolean | `false`      | Run PHPStan (whole-project) after PHPCS in `lint-php`.                                                |
+| `run-a11y`         | boolean | `false`      | Run the `a11y` job. Off by default — slow and needs pa11y config. Gate it on the `Run a11y` label at the caller. |
 | `use-wp-env`       | boolean | `true`       | Run `test-php` under `@wordpress/env`. Set `false` only for a pure Composer library that runs standalone PHPUnit. |
 | `php-versions`     | string  | `["8.3"]`    | Non-empty JSON array of PHP versions; crossed with `wp-versions` to fan out `test-php`. Empty `[]` is a matrix error. |
 | `wp-versions`      | string  | `[""]`       | JSON array of WordPress core versions for wp-env; crossed with `php-versions`. Empty string = `.wp-env.json` default; ignored when `use-wp-env: false`. |
@@ -83,11 +85,12 @@ jobs:
 
 | Preset    | Jobs |
 | --------- | ---- |
-| `plugin`  | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y |
-| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, build, build-artifact†, a11y |
+| `plugin`  | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡ |
+| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, build, build-artifact†, a11y‡ |
 | `package` | detect-changes, lint-php, test-php |
 
 † `build-artifact` runs only when `build-artifact-path` is set — the default `build` output is not an installable directory.
+‡ `a11y` runs only when `run-a11y: true` — it is slow and needs pa11y config, so gate it on the `Run a11y` label at the caller.
 
 Skippable job ids (for `skip`): `lint-css`, `lint-js`, `lint-php`, `test-js`, `test-php`, `build`, `build-artifact`, `a11y`. `detect-changes` is the backbone and always runs. Matching is comma-exact, so `skip: build` drops `build` but not `build-artifact`.
 

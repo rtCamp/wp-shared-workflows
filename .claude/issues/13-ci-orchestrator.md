@@ -22,6 +22,7 @@ The individual CI workflows each do one thing; a consuming skeleton would otherw
 - [2026-05-29] **`skip` matching is comma-bounded:** `!contains(format(',{0},', inputs.skip), ',<id>,')` so `skip: build` never also drops `build-artifact`.
 - [2026-06-16] **`build-artifact` wired; `bc` dropped.** `ci-test-build-artifact.yml` is present and wired into the orchestrator. `ci-test-bc.yml` stays deferred (TS blocker), so no `bc` job is defined. With all `uses:` targets present, `act --dryrun` parses the whole orchestrator.
 - [2026-06-16] **No committed example caller.** Dropped `.github/workflows/_examples/caller-wp-ci.yml` for README-only delivery, matching house style (#3/#5/#7/#9/#11/#14).
+- [2026-06-17] **a11y is opt-in via `run-a11y` (default false).** It was running for every plugin/theme push/PR — diverging from the documented label-gated convention and failing CI for consumers without pa11y config. Added a `run-a11y` boolean (default false); the caller wires it to the `Run a11y` label. Chose an input over hard-coding the event/label into the orchestrator (Copilot's suggestion) so it stays trigger-agnostic and input-driven; `skip: a11y` remains a second off-switch.
 - [2026-05-29] **`build-artifact` install-path derived from `project-type`** (`theme` → `wp-content/themes`, else `wp-content/plugins`) and `slug` defaulted to the repo name — the most the 2-input contract can infer.
 
 ---
@@ -102,7 +103,7 @@ Each job additionally requires its bucket count `> 0`; `skip: "<id>"` drops exac
 - **`build-artifact` is the weakest generic fit.** It needs a *packaged* artifact (`dist/<slug>/`), but the default `ci-build` build-command emits bare `build/`. Wired with `slug` = repo name + `project-type`-derived install-path for design completeness; a non-standard slug or a packaging step needs a consumer override (candidate v1.x passthrough inputs). Do not assume this job runs green post-#23 without packaging wiring.
 - **`bc` removed.** `ci-test-bc.yml` is deferred (TypeScript blocker), so no `bc` job is defined; add it back when that workflow lands.
 - **Self-test deferred.** This repo is pure YAML (no PHP/JS to lint/test), so a meaningful self-run of `wp-ci.yml` is not possible. Real e2e proof = a consumer repo calling `wp-ci.yml@<branch>` on push/PR.
-- **a11y default trigger.** `ci-test-a11y` is label-triggered at the caller level by design; the orchestrator includes it per preset and exposes `skip: a11y`. Label-gating stays a caller concern.
+- **a11y is opt-in (`run-a11y`, default false).** `ci-test-a11y` is trigger-agnostic; the orchestrator now gates it on the `run-a11y` input (default false) so a slow pa11y run never fires — or fails for lack of pa11y config — unless the caller opts in (typically wired to the `Run a11y` label). `skip: a11y` remains a second off-switch.
 - **Deps landed.** detect-changes + lint (#2) and build-artifact (#23) are present on the branch; only `bc` (`ci-test-bc.yml`) stays deferred and is intentionally not wired.
 
 ---

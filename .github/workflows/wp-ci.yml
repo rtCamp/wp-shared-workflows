@@ -15,6 +15,10 @@ on:
         description: "Run PHPStan (whole-project) after PHPCS in the lint-php job."
         type: boolean
         default: false
+      run-a11y:
+        description: "Run the a11y (pa11y) job. Off by default — it is slow and needs pa11y config. Gate it on the 'Run a11y' label at the caller (see README)."
+        type: boolean
+        default: false
       use-wp-env:
         description: "Run test-php under @wordpress/env (default). Set false for a standalone Composer library that runs PHPUnit without WordPress."
         type: boolean
@@ -182,11 +186,14 @@ jobs:
       slug: ${{ inputs.build-artifact-slug != '' && inputs.build-artifact-slug || github.event.repository.name }}
       install-path: ${{ inputs.project-type == 'theme' && 'wp-content/themes' || 'wp-content/plugins' }}
 
+  # Opt-in: a11y is slow and needs pa11y config, so it stays off unless run-a11y is set
+  # (wire it to the 'Run a11y' label at the caller). Matches the label-gated convention.
   a11y:
     name: Test accessibility
     needs: [detect-changes]
     if: >-
-      (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
+      inputs.run-a11y
+      && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
       && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
       && !contains(format(',{0},', inputs.skip), ',a11y,')
     uses: ./.github/workflows/ci-test-a11y.yml
