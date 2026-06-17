@@ -9,7 +9,7 @@
 
 ## Summary
 
-Every rtCamp WordPress project that ships JS runs the same Jest pipeline — `Test and Measure`'s `unit-tests-js` job is copy-pasted across plugins, themes, and Composer packages with minor drift. Centralising this as a reusable workflow lets every consumer adopt one canonical implementation via `uses: rtCamp/shared-workflows/.github/workflows/ci-test-js.yml@v1`, and adds Jest cache support that the legacy job didn't have.
+Every rtCamp WordPress project that ships JS runs the same Jest pipeline — `Test and Measure`'s `unit-tests-js` job is copy-pasted across plugins, themes, and Composer packages with minor drift. Centralising this as a reusable workflow lets every consumer adopt one canonical implementation via `uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-js.yml@v1`, and adds Jest cache support that the legacy job didn't have.
 
 ---
 

@@ -9,7 +9,7 @@
 
 ## Summary
 
-Every rtCamp WordPress project that ships JS or CSS runs the same production build — `Test and Measure`'s `build-prod` job is copy-pasted across plugins, themes, and packages. Most callers only need to verify the build exits 0; CD callers also need the built files handed to a downstream deploy job. This task adds `ci-build.yml` — a single reusable workflow with an `upload-artifact` toggle (default `false`) that covers both shapes so every consumer can adopt one canonical implementation via `uses: rtCamp/shared-workflows/.github/workflows/ci-build.yml@v1`.
+Every rtCamp WordPress project that ships JS or CSS runs the same production build — `Test and Measure`'s `build-prod` job is copy-pasted across plugins, themes, and packages. Most callers only need to verify the build exits 0; CD callers also need the built files handed to a downstream deploy job. This task adds `ci-build.yml` — a single reusable workflow with an `upload-artifact` toggle (default `false`) that covers both shapes so every consumer can adopt one canonical implementation via `uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1`.
 
 ---
 

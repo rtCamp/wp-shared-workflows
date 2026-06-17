@@ -9,7 +9,7 @@
 
 ## Summary
 
-Every rtCamp WordPress project that ships PHP currently copy-pastes the same `unit-test-php` job from the legacy `Test and Measure` workflow. Some consumers need a full WordPress integration environment via `@wordpress/env`; Composer-only packages and libraries do not. This task adds `ci-test-php.yml` — a single reusable workflow with a `use-wp-env` toggle that covers both modes so every consumer can adopt one canonical implementation via `uses: rtCamp/shared-workflows/.github/workflows/ci-test-php.yml@v1`.
+Every rtCamp WordPress project that ships PHP currently copy-pastes the same `unit-test-php` job from the legacy `Test and Measure` workflow. Some consumers need a full WordPress integration environment via `@wordpress/env`; Composer-only packages and libraries do not. This task adds `ci-test-php.yml` — a single reusable workflow with a `use-wp-env` toggle that covers both modes so every consumer can adopt one canonical implementation via `uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1`.
 
 ---
 

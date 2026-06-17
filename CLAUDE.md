@@ -1,4 +1,4 @@
-# CLAUDE.md — `shared-workflows`
+# CLAUDE.md — `wp-shared-workflows`
 
 Read this file at the start of every session. Topic-specific details live in [.claude/issues/](.claude/issues/) (per-task state) and [.claude/commands/](.claude/commands/) (skills). Read those only when the task requires.
 
@@ -6,7 +6,7 @@ Read this file at the start of every session. Topic-specific details live in [.c
 
 ## What this repo is
 
-A pure GitHub Actions workflow repository for rtCamp WordPress projects. Provides reusable CI and CD building blocks consumed by every rtCamp repo via `uses: rtCamp/shared-workflows/.github/workflows/<name>.yml@v1`. Zero JavaScript. Zero `node_modules`. Only YAML. Scripts that need logic live in `@rtcamp/wp-tooling` and are invoked through `npx wp-tooling <command>`.
+A pure GitHub Actions workflow repository for rtCamp WordPress projects. Provides reusable CI and CD building blocks consumed by every rtCamp repo via `uses: rtCamp/wp-shared-workflows/.github/workflows/<name>.yml@v1`. Zero JavaScript. Zero `node_modules`. Only YAML. Scripts that need logic live in `@rtcamp/wp-tooling` and are invoked through `npx wp-tooling <command>`.
 
 ---
 
@@ -68,7 +68,7 @@ README.md                  Caller examples — keep accurate
 Deploy workflows are all optional. Consumers list which deploy targets they want in the CD orchestrator call:
 
 ```yaml
-uses: rtCamp/shared-workflows/.github/workflows/wp-cd.yml@v1
+uses: rtCamp/wp-shared-workflows/.github/workflows/wp-cd.yml@v1
 with:
   deploy-target: "github,vip"   # or "github,wporg" or "github,s3"
 ```

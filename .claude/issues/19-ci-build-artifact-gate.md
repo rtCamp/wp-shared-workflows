@@ -12,7 +12,7 @@
 
 Every rtCamp WordPress project that produces build output (compiled CSS/JS, Composer `vendor/`, etc.) needs a gate that fails any PR which commits those files. The build is meant to be produced by CI on merge, not committed by hand. Without a gate, stale build trees creep into the repo and silently override what CI produces.
 
-This task lifts the inline `rtcamp-standard.yml` workflow from `rtCamp/theme-elementary` (issue [#642](https://github.com/rtCamp/theme-elementary/issues/642)) into shared-workflows as `ci-build-artifact-gate.yml`, so every rtCamp repo can consume it via `uses:` instead of copy-pasting. Default gated path is `assets/build/`. Consumers can pass a newline-separated list of prefixes and an optional `working-dir` for monorepos.
+This task lifts the inline `rtcamp-standard.yml` workflow from `rtCamp/theme-elementary` (issue [#642](https://github.com/rtCamp/theme-elementary/issues/642)) into wp-shared-workflows as `ci-build-artifact-gate.yml`, so every rtCamp repo can consume it via `uses:` instead of copy-pasting. Default gated path is `assets/build/`. Consumers can pass a newline-separated list of prefixes and an optional `working-dir` for monorepos.
 
 ---
 

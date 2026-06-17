@@ -1,0 +1,55 @@
+name: CI / Lint CSS
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version."
+        type: string
+        default: "22"
+      lint-command:
+        description: "Shell command that runs Stylelint over the whole project. Used when changed-files is empty."
+        type: string
+        default: "npm run lint:css"
+      changed-files:
+        description: "Newline-separated list of CSS files to lint. Empty = run lint-command over the whole project."
+        type: string
+        default: ""
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  lint-css:
+    name: Stylelint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run Stylelint
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed-files }}
+        run: |
+          if [ -n "$CHANGED_FILES" ]; then
+            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx --no-install stylelint --
+          else
+            ${{ inputs.lint-command }}
+          fi

@@ -1,0 +1,107 @@
+name: CI / Lint PHP
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: "PHP version."
+        type: string
+        default: "8.3"
+      enable-phpstan:
+        description: "Run PHPStan after PHPCS."
+        type: boolean
+        default: false
+      phpcs-command:
+        description: "PHPCS binary path or custom command."
+        type: string
+        default: "vendor/bin/phpcs"
+      changed-files:
+        description: "Newline-separated list of PHP files to lint with PHPCS. Empty = lint the whole project. PHPStan always runs whole-project — it analyses cross-file dependencies."
+        type: string
+        default: ""
+      phpstan-command:
+        description: "Shell command that runs PHPStan."
+        type: string
+        default: "vendor/bin/phpstan analyse"
+      phpstan-level:
+        description: "Override PHPStan level. Empty uses the level from phpstan.neon.dist."
+        type: string
+        default: ""
+      composer-flags:
+        description: "Flags passed to `composer install`. Default includes `--no-scripts` for supply-chain hygiene."
+        type: string
+        default: "--prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
+      validate-composer:
+        description: "Run `composer validate` before installing. Disable for packages without composer.lock."
+        type: boolean
+        default: true
+      working-dir:
+        description: "Working directory for monorepos."
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+jobs:
+  lint-php:
+    name: Lint PHP
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer, cs2pr
+          coverage: none
+
+      - name: Validate composer.json
+        if: ${{ inputs.validate-composer }}
+        run: composer validate --no-check-publish
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php${{ inputs.php-version }}-
+
+      - name: Install Composer dependencies
+        run: composer install ${{ inputs.composer-flags }}
+
+      - name: Run PHPCS
+        shell: bash
+        env:
+          CHANGED_FILES: ${{ inputs.changed-files }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CHANGED_FILES" ]; then
+            tmp_list=$(mktemp)
+            trap 'rm -f "$tmp_list"' EXIT
+            printf '%s\n' "$CHANGED_FILES" > "$tmp_list"
+            ${{ inputs.phpcs-command }} --file-list="$tmp_list" \
+              -q --report=checkstyle \
+              --runtime-set ignore_warnings_on_exit 1 \
+              | cs2pr --graceful-warnings
+          else
+            ${{ inputs.phpcs-command }} -q --report=checkstyle \
+              --runtime-set ignore_warnings_on_exit 1 \
+              | cs2pr --graceful-warnings
+          fi
+
+      - name: Run PHPStan
+        if: ${{ inputs.enable-phpstan }}
+        run: >-
+          ${{ inputs.phpstan-command }}
+          ${{ inputs.phpstan-level != '' && format('--level={0}', inputs.phpstan-level) || '' }}
