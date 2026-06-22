@@ -22,16 +22,84 @@ Per-issue progress lives in [`.claude/issues/`](./.claude/issues/). Claude skill
 # .github/workflows/ci.yml in any rtCamp repo
 name: CI
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   ci:
     uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
     with:
-      php-version: "8.3"
-      node-version: "22"
-      project-type: "plugin"
+      project-type: "plugin"   # plugin | theme | package
+    secrets:
+      # Read access to the private rtCamp/wp-tooling repo until it is published.
+      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
 ```
 
 ## Individual workflows
+
+### `wp-ci.yml`: CI orchestrator
+
+Call this once and it routes to the right subset of the individual CI workflows for your `project-type`. `detect-changes` runs first; every downstream job is gated on its per-bucket counts, so a PR that touched no PHP skips PHP lint and tests, and so on. A consumer adds a ~10-line caller and never wires the underlying workflows by hand.
+
+```yaml
+# .github/workflows/ci.yml in the consumer
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  ci:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
+    with:
+      project-type: plugin   # plugin | theme | package
+      # skip: "a11y"         # optional: comma-separated job ids
+      # enable-phpstan: true # optional: run PHPStan after PHPCS
+      # use-wp-env: false    # optional: standalone PHPUnit for a pure Composer library
+      # run-a11y: ${{ contains(github.event.pull_request.labels.*.name, 'Run a11y') }} # optional: gate a11y on a label
+      # Optional: fan PHPUnit across a PHP x WordPress grid. Under the default wp-env
+      # each cell pins PHP + WordPress core; drop cells via test-php-exclude — each
+      # {php, wp} must match a cell in the product. Omit all three for a single 8.3 leg.
+      php-versions: '["8.1","8.2","8.3"]'
+      wp-versions: '["6.7","6.8","6.9"]'
+      test-php-exclude: '[{"php":"8.1","wp":"6.9"}]'
+    secrets:
+      # Read access to the private rtCamp/wp-tooling repo until it is published.
+      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
+```
+
+| Input              | Type    | Default      | Description                                                                                          |
+| ------------------ | ------- | ------------ | ---------------------------------------------------------------------------------------------------- |
+| `project-type`     | string  | —            | **Required.** `plugin` \| `theme` \| `package` — selects the job preset.                             |
+| `skip`             | string  | `""`         | Comma-separated job ids to drop without forking the orchestrator. Disable PHP tests with `test-php` here — not an empty array. |
+| `enable-phpstan`   | boolean | `false`      | Run PHPStan (whole-project) after PHPCS in `lint-php`.                                                |
+| `run-a11y`         | boolean | `false`      | Run the `a11y` job. Off by default — slow and needs pa11y config. Gate it on the `Run a11y` label at the caller. |
+| `use-wp-env`       | boolean | `true`       | Run `test-php` under `@wordpress/env`. Set `false` only for a pure Composer library that runs standalone PHPUnit. |
+| `php-versions`     | string  | `["8.3"]`    | Non-empty JSON array of PHP versions; crossed with `wp-versions` to fan out `test-php`. Empty `[]` is a matrix error. |
+| `wp-versions`      | string  | `[""]`       | JSON array of WordPress core versions for wp-env; crossed with `php-versions`. Empty string = `.wp-env.json` default; ignored when `use-wp-env: false`. |
+| `test-php-exclude` | string  | `[]`         | JSON array of `{php, wp}` cells to drop from the product; both keys must match a cell.               |
+| `build-artifact-path` | string | `""`      | Packaged installable plugin/theme dir the build produces (e.g. `dist/my-plugin/`). Set this to run the `build-artifact` install test; empty skips it. |
+| `build-artifact-slug` | string | `""`      | Slug to activate in the `build-artifact` test. Empty uses the repo name.                             |
+
+**Secret:** `wp-tooling-token` (optional) — forwarded to `detect-changes` to install the interim CLI from the private `rtCamp/wp-tooling` repo. Required until `@rtcamp/wp-tooling` is published.
+
+**Project-type presets** (a job also runs only when `detect-changes` reports the relevant bucket changed):
+
+| Preset    | Jobs |
+| --------- | ---- |
+| `plugin`  | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡ |
+| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, build, build-artifact†, a11y‡ |
+| `package` | detect-changes, lint-php, test-php |
+
+† `build-artifact` runs only when `build-artifact-path` is set — the default `build` output is not an installable directory.
+‡ `a11y` runs only when `run-a11y: true` — it is slow and needs pa11y config, so gate it on the `Run a11y` label at the caller.
+
+Skippable job ids (for `skip`): `lint-css`, `lint-js`, `lint-php`, `test-js`, `test-php`, `build`, `build-artifact`, `a11y`. `validate-inputs` and `detect-changes` always run and aren't skippable. Matching is comma-exact, so `skip: build` drops `build` but not `build-artifact`.
+
+Notes:
+
+- **Concurrency** — duplicate runs on the same ref (e.g. a force-push) are cancelled (`concurrency: ci-${{ github.ref }}`, `cancel-in-progress: true`).
+- **PHP / WordPress matrix** — `test-php` fans out over `php-versions` × `wp-versions` minus `test-php-exclude`. With `use-wp-env: true` (the default) each cell boots `@wordpress/env`, pinning `WP_ENV_PHP_VERSION` and `WP_ENV_CORE` — this suits plugins, themes, and packages whose suite tests against WordPress (e.g. via `wp-phpunit`), and the consumer needs a `.wp-env.json` plus `wp-env` and `test:php` npm scripts. A pure Composer library sets `use-wp-env: false` to run **standalone** PHPUnit (`vendor/bin/phpunit`), where the `wp` dimension is inert and no Node/Docker is required. Node defaults to 22; defaults run a single PHP 8.3 leg against the consumer's `.wp-env.json` WordPress version.
+- **Static analysis & coverage** — PHPStan is off by default; opt in with `enable-phpstan: true`. The orchestrator does not yet produce a coverage report (a v1.x follow-up), so it does not fully replace a pipeline that gated on coverage.
+- **`build-artifact`** — opt-in. Set `build-artifact-path` to the installable dir your build produces (the default `build` output is bare `build/`, not installable); the `build` job then uploads that path and `build-artifact` boots it in WordPress. `build-artifact-slug` overrides the activated slug (defaults to the repo name); install path follows `project-type`.
 
 ### `version-monitor.yml`: monthly version monitor
 
@@ -273,6 +341,7 @@ jobs:
 | ---------------- | ------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `php-version`    | string  | `"8.3"`                                                       | PHP version to install.                                                    |
 | `node-version`   | string  | `"22"`                                                        | Node.js version. Consumed only when `use-wp-env: true`.                    |
+| `wp-version`     | string  | `""`                                                          | WordPress core version for wp-env, e.g. `"6.8"` (resolved as `WordPress/WordPress#<version>`). Empty uses the consumer's `.wp-env.json`. Ignored when `use-wp-env: false`. |
 | `use-wp-env`     | boolean | `true`                                                        | Start `@wordpress/env` before tests for WordPress integration runs.        |
 | `test-command`   | string  | `""`                                                          | PHPUnit command. Empty means `npm run test:php` in wp-env mode, `vendor/bin/phpunit` standalone. |
 | `composer-flags` | string  | `"--no-interaction --prefer-dist --no-progress --no-scripts"` | Flags passed to `composer install`. Keep `--no-scripts` for supply-chain hygiene. |

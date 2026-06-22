@@ -4,13 +4,17 @@ on:
   workflow_call:
     inputs:
       php-version:
-        description: "PHP version to install."
+        description: "PHP version. Installed on the host (used directly in standalone mode) and passed to wp-env as WP_ENV_PHP_VERSION so the container runs the same version."
         type: string
         default: "8.3"
       node-version:
         description: "Node.js version (used only when use-wp-env is true)."
         type: string
         default: "22"
+      wp-version:
+        description: "WordPress core version for wp-env, e.g. '6.8' (resolved as WordPress/WordPress#<version>). Empty uses the version from the consumer's .wp-env.json. Ignored when use-wp-env is false."
+        type: string
+        default: ""
       use-wp-env:
         description: "Start @wordpress/env before tests for WordPress integration runs."
         type: boolean
@@ -35,6 +39,12 @@ jobs:
   test-php:
     name: PHPUnit
     runs-on: ubuntu-latest
+    # Pin the wp-env container's PHP/WordPress core via env: (not $GITHUB_ENV, which is
+    # newline-injectable) at job scope, so start/run/stop resolve the same environment.
+    # An empty WP_ENV_CORE is ignored by wp-env (falls back to the consumer's .wp-env.json).
+    env:
+      WP_ENV_PHP_VERSION: ${{ inputs.use-wp-env && inputs.php-version || '' }}
+      WP_ENV_CORE: ${{ (inputs.use-wp-env && inputs.wp-version != '') && format('WordPress/WordPress#{0}', inputs.wp-version) || '' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-dir }}
