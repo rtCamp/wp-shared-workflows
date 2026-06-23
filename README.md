@@ -64,6 +64,9 @@ jobs:
     secrets:
       # Read access to the private rtCamp/wp-tooling repo until it is published.
       wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
+      # Read access to private Composer source repos (e.g. rtCamp/wp-framework) so
+      # composer install can resolve them in lint-php / test-php. One token can serve both.
+      packages-token: ${{ secrets.RTCAMP_PACKAGES_TOKEN }}
 ```
 
 | Input              | Type    | Default      | Description                                                                                          |
@@ -79,7 +82,10 @@ jobs:
 | `build-artifact-path` | string | `""`      | Packaged installable plugin/theme dir the build produces (e.g. `dist/my-plugin/`). Set this to run the `build-artifact` install test; empty skips it. |
 | `build-artifact-slug` | string | `""`      | Slug to activate in the `build-artifact` test. Empty uses the repo name.                             |
 
-**Secret:** `wp-tooling-token` (optional) — forwarded to `detect-changes` to install the interim CLI from the private `rtCamp/wp-tooling` repo. Required until `@rtcamp/wp-tooling` is published.
+**Secrets:**
+
+- `wp-tooling-token` (optional) — forwarded to `detect-changes` to install the interim CLI from the private `rtCamp/wp-tooling` repo. Required until `@rtcamp/wp-tooling` is published.
+- `packages-token` (optional) — forwarded to `lint-php` and `test-php` to authenticate `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`). Omit for projects with only public/Packagist deps. A single token with read access to both repos can serve `wp-tooling-token` and `packages-token`.
 
 **Project-type presets** (a job also runs only when `detect-changes` reports the relevant bucket changed):
 
@@ -246,6 +252,8 @@ jobs:
 | `validate-composer`| boolean | `true`                                                           | Run `composer validate` before installing.                                       |
 | `working-dir`      | string  | `"."`                                                            | Working directory for monorepos.                                                 |
 
+**Secret:** `packages-token` (optional) — passed to setup-php to authenticate `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`). Omit for projects with only public/Packagist deps.
+
 
 ### `ci-build.yml`: production build
 
@@ -346,6 +354,9 @@ jobs:
 | `test-command`   | string  | `""`                                                          | PHPUnit command. Empty means `npm run test:php` in wp-env mode, `vendor/bin/phpunit` standalone. |
 | `composer-flags` | string  | `"--no-interaction --prefer-dist --no-progress --no-scripts"` | Flags passed to `composer install`. Keep `--no-scripts` for supply-chain hygiene. |
 | `working-dir`    | string  | `"."`                                                         | Working directory for monorepos.                                           |
+
+**Secret:** `packages-token` (optional) — authenticates `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`) on the host (via setup-php) and inside the wp-env container. Omit for projects with only public/Packagist deps.
+
 Each workflow can be called independently, so you can wire them into your own job graph if the orchestrator preset does not fit your setup.
 
 ### `ci-test-js.yml` — Jest tests

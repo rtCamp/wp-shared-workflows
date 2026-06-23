@@ -39,6 +39,10 @@ on:
         description: "Working directory for monorepos."
         type: string
         default: "."
+    secrets:
+      packages-token:
+        description: "Optional token with read access to private Composer source repos (e.g. rtCamp/wp-framework). Passed to setup-php so `composer install` can resolve private VCS dependencies. Omit for projects with only public/Packagist deps."
+        required: false
 
 permissions:
   contents: read
@@ -60,6 +64,9 @@ jobs:
           php-version: ${{ inputs.php-version }}
           tools: composer, cs2pr
           coverage: none
+          # Authenticates `composer install` for private VCS deps. Falls back to the
+          # default GITHUB_TOKEN (rate-limit help only) when no packages-token is given.
+          github-token: ${{ secrets.packages-token || github.token }}
 
       - name: Validate composer.json
         if: ${{ inputs.validate-composer }}

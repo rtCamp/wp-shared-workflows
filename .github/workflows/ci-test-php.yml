@@ -31,6 +31,10 @@ on:
         description: "Working directory for monorepos."
         type: string
         default: "."
+    secrets:
+      packages-token:
+        description: "Optional token with read access to private Composer source repos (e.g. rtCamp/wp-framework). Authenticates `composer install` on the host (via setup-php) and inside the wp-env container. Omit for projects with only public/Packagist deps."
+        required: false
 
 permissions:
   contents: read
@@ -58,6 +62,9 @@ jobs:
           php-version: ${{ inputs.php-version }}
           coverage: none
           tools: composer
+          # Authenticates the host `composer install` for private VCS deps. Falls back to
+          # the default GITHUB_TOKEN (rate-limit help only) when no packages-token is given.
+          github-token: ${{ secrets.packages-token || github.token }}
 
       - name: Set up Node.js
         if: ${{ inputs.use-wp-env }}
@@ -76,6 +83,18 @@ jobs:
       - name: Start wp-env
         if: ${{ inputs.use-wp-env }}
         run: npm run wp-env start
+
+      # Configure Composer auth inside the container so the in-container `composer install`
+      # (e.g. a pretest:php hook) can resolve private VCS deps. Secrets can't be used in
+      # `if:`, so guard on the env var inside the script — a no-op when no token is set.
+      - name: Configure Composer auth in wp-env
+        if: ${{ inputs.use-wp-env }}
+        env:
+          PACKAGES_TOKEN: ${{ secrets.packages-token }}
+        run: |
+          if [ -n "$PACKAGES_TOKEN" ]; then
+            npx wp-env run tests-cli -- composer config --global github-oauth.github.com "$PACKAGES_TOKEN"
+          fi
 
       - name: Run PHPUnit
         run: ${{ inputs.test-command != '' && inputs.test-command || (inputs.use-wp-env && 'npm run test:php' || 'vendor/bin/phpunit') }}

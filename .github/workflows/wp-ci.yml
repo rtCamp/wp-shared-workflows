@@ -47,6 +47,9 @@ on:
       wp-tooling-token:
         description: "Token with read access to the private rtCamp/wp-tooling repo, forwarded to detect-changes to install the interim CLI. Required while that repo is private."
         required: false
+      packages-token:
+        description: "Token with read access to private Composer source repos (e.g. rtCamp/wp-framework), forwarded to lint-php and test-php to authenticate `composer install`. Omit for projects with only public/Packagist deps. A single token may serve both wp-tooling-token and packages-token."
+        required: false
 
 # Cancel an in-progress run when the same ref is pushed again (e.g. a force-push).
 concurrency:
@@ -122,6 +125,8 @@ jobs:
     with:
       changed-files: ${{ needs.detect-changes.outputs.php-files }}
       enable-phpstan: ${{ inputs.enable-phpstan }}
+    secrets:
+      packages-token: ${{ secrets.packages-token }}
 
   test-js:
     name: Test JS
@@ -153,6 +158,8 @@ jobs:
       php-version: ${{ matrix.php }}
       wp-version: ${{ matrix.wp }}
       use-wp-env: ${{ inputs.use-wp-env }}
+    secrets:
+      packages-token: ${{ secrets.packages-token }}
 
   build:
     name: Build
