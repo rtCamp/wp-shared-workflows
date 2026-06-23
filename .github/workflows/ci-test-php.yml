@@ -93,7 +93,12 @@ jobs:
           PACKAGES_TOKEN: ${{ secrets.packages-token }}
         run: |
           if [ -n "$PACKAGES_TOKEN" ]; then
-            npx wp-env run tests-cli -- composer config --global github-oauth.github.com "$PACKAGES_TOKEN"
+            # Only configure in-container auth when the container actually has Composer.
+            # Some consumers run PHPUnit against a host-installed vendor/ with no in-container
+            # composer, where an unconditional `composer config` would fail the job.
+            if npx wp-env run tests-cli -- sh -lc 'command -v composer >/dev/null 2>&1'; then
+              npx wp-env run tests-cli -- composer config --global github-oauth.github.com "$PACKAGES_TOKEN"
+            fi
           fi
 
       - name: Run PHPUnit

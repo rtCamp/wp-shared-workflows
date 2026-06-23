@@ -65,7 +65,8 @@ jobs:
       # Read access to the private rtCamp/wp-tooling repo until it is published.
       wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
       # Read access to private Composer source repos (e.g. rtCamp/wp-framework) so
-      # composer install can resolve them in lint-php / test-php. One token can serve both.
+      # composer install can resolve them in lint-php / test-php. One token with access to
+      # every private repo involved can serve both secrets (wp-tooling-token + packages-token).
       packages-token: ${{ secrets.RTCAMP_PACKAGES_TOKEN }}
 ```
 
@@ -85,7 +86,7 @@ jobs:
 **Secrets:**
 
 - `wp-tooling-token` (optional) — forwarded to `detect-changes` to install the interim CLI from the private `rtCamp/wp-tooling` repo. Required until `@rtcamp/wp-tooling` is published.
-- `packages-token` (optional) — forwarded to `lint-php` and `test-php` to authenticate `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`). Omit for projects with only public/Packagist deps. A single token with read access to both repos can serve `wp-tooling-token` and `packages-token`.
+- `packages-token` (optional) — forwarded to `lint-php` and `test-php` to authenticate `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`). Omit for projects with only public/Packagist deps. A single token with read access to all the required private repos can serve both `wp-tooling-token` and `packages-token`.
 
 **Project-type presets** (a job also runs only when `detect-changes` reports the relevant bucket changed):
 
