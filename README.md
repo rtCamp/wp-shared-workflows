@@ -93,7 +93,7 @@ jobs:
 | Preset    | Jobs |
 | --------- | ---- |
 | `plugin`  | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡ |
-| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, build, build-artifact†, a11y‡ |
+| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡ |
 | `package` | detect-changes, lint-php, test-php |
 
 † `build-artifact` runs only when `build-artifact-path` is set — the default `build` output is not an installable directory.

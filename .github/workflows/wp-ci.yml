@@ -142,7 +142,7 @@ jobs:
     needs: [detect-changes]
     if: >-
       needs.detect-changes.outputs.php-count > 0
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'package')
+      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme' || inputs.project-type == 'package')
       && !contains(format(',{0},', inputs.skip), ',test-php,')
     # Matrix: php-versions × wp-versions, minus test-php-exclude cells. With use-wp-env
     # (default) each cell boots @wordpress/env, pinning PHP + WP core; with use-wp-env
