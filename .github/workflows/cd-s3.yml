@@ -45,17 +45,22 @@ jobs:
     steps:
       # An empty tag would silently upload to '<prefix>.zip'; an empty artifact-name
       # downloads every artifact in the run.
-      - name: Validate inputs
+      - name: Validate inputs and secrets
         shell: bash
         env:
           TAG: ${{ inputs.tag }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           BUCKET: ${{ inputs.bucket }}
+          # Presence booleans only — no secret material lands in the environment.
+          HAS_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+          HAS_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' }}
         run: |
           set -euo pipefail
           [ -n "$TAG" ] || { echo "::error::tag input must not be empty"; exit 1; }
           [ -n "$ARTIFACT_NAME" ] || { echo "::error::artifact-name input must not be empty"; exit 1; }
           [ -n "$BUCKET" ] || { echo "::error::bucket input must not be empty"; exit 1; }
+          [ "$HAS_AWS_ACCESS_KEY_ID" = "true" ] || { echo "::error::AWS_ACCESS_KEY_ID secret must not be empty"; exit 1; }
+          [ "$HAS_AWS_SECRET_ACCESS_KEY" = "true" ] || { echo "::error::AWS_SECRET_ACCESS_KEY secret must not be empty"; exit 1; }
 
       - name: Download build artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0

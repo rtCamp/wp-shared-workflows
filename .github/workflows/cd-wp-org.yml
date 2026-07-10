@@ -48,17 +48,22 @@ jobs:
     steps:
       # An empty slug would fall back to the deploy action's repo-name default and
       # deploy to the wrong plugin; an empty artifact-name downloads every artifact.
-      - name: Validate inputs
+      - name: Validate inputs and secrets
         shell: bash
         env:
           SLUG: ${{ inputs.slug }}
           TAG: ${{ inputs.tag }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          # Presence booleans only — no secret material lands in the environment.
+          HAS_WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME != '' }}
+          HAS_WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD != '' }}
         run: |
           set -euo pipefail
           [ -n "$SLUG" ] || { echo "::error::slug input must not be empty"; exit 1; }
           [ -n "$TAG" ] || { echo "::error::tag input must not be empty"; exit 1; }
           [ -n "$ARTIFACT_NAME" ] || { echo "::error::artifact-name input must not be empty"; exit 1; }
+          [ "$HAS_WP_ORG_USERNAME" = "true" ] || { echo "::error::WP_ORG_USERNAME secret must not be empty"; exit 1; }
+          [ "$HAS_WP_ORG_PASSWORD" = "true" ] || { echo "::error::WP_ORG_PASSWORD secret must not be empty"; exit 1; }
 
       # Needed so the 10up action can read assets-path from the workspace; the
       # plugin files themselves come from the downloaded artifact (BUILD_DIR).
