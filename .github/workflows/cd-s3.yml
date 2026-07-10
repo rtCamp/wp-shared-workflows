@@ -43,6 +43,20 @@ jobs:
     name: Upload to S3
     runs-on: ubuntu-latest
     steps:
+      # An empty tag would silently upload to '<prefix>.zip'; an empty artifact-name
+      # downloads every artifact in the run.
+      - name: Validate inputs
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          BUCKET: ${{ inputs.bucket }}
+        run: |
+          set -euo pipefail
+          [ -n "$TAG" ] || { echo "::error::tag input must not be empty"; exit 1; }
+          [ -n "$ARTIFACT_NAME" ] || { echo "::error::artifact-name input must not be empty"; exit 1; }
+          [ -n "$BUCKET" ] || { echo "::error::bucket input must not be empty"; exit 1; }
+
       - name: Download build artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:

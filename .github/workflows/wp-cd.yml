@@ -69,22 +69,21 @@ on:
         description: "s3: AWS secret access key for the above key id. Required when deploy-target includes s3."
         required: false
 
-# No top-level permissions block on purpose: a called workflow can only downgrade the
-# caller's grant, and the targets differ — cd-github-release needs contents: write,
-# wporg/s3 only read. Declaring write here would break wporg/s3-only callers running
-# with contents: read, so the caller's grant passes through unchanged and
-# cd-github-release asserts write itself when the github target runs.
+# No permissions block on purpose: cd-github-release needs contents: write, wporg/s3
+# only read, and a called workflow can only downgrade the caller's grant — so the
+# caller's grant passes through and cd-github-release asserts write itself.
 
 jobs:
-  # Fail fast on a bad target list or a target whose inputs/secrets are missing — a
-  # typo would otherwise silently deploy nothing, and a missing secret would fail
-  # mid-deploy instead of before any target starts.
+  # Fail fast before any target starts — a typo'd target would otherwise silently
+  # deploy nothing, and a missing input/secret would fail mid-deploy.
   validate-inputs:
     name: Validate inputs
     runs-on: ubuntu-latest
     steps:
       - name: Check deploy targets and their required inputs and secrets
         env:
+          TAG: ${{ inputs.tag }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
           DEPLOY_TARGET: ${{ inputs.deploy-target }}
           SLUG: ${{ inputs.slug }}
           BUCKET: ${{ inputs.bucket }}
@@ -95,12 +94,14 @@ jobs:
           HAS_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' }}
         run: |
           set -euo pipefail
+          # required: true does not prevent empty strings — an empty expression satisfies it.
+          [ -n "$TAG" ] || { echo "::error::tag input must not be empty"; exit 1; }
+          [ -n "$ARTIFACT_NAME" ] || { echo "::error::artifact-name input must not be empty"; exit 1; }
           if [ -z "$DEPLOY_TARGET" ]; then
             echo "::error::deploy-target must list at least one target: github, wporg, s3"
             exit 1
           fi
-          # The target jobs match comma-bounded (',github,'), so whitespace inside the
-          # list would silently disable a target — reject it here instead.
+          # Whitespace would break the jobs' comma-bounded matching and silently disable a target.
           if [[ "$DEPLOY_TARGET" == *[[:space:]]* ]]; then
             echo "::error::deploy-target must be comma-separated without spaces (got '$DEPLOY_TARGET')"
             exit 1
@@ -130,9 +131,7 @@ jobs:
             esac
           done
 
-  # Target matching is comma-bounded (like wp-ci's skip input) so a target name can
-  # never substring-match another; targets run in parallel — each deploys to a
-  # distinct destination.
+  # Comma-bounded matching (as wp-ci's skip) — a target can never substring-match another.
   github-release:
     name: GitHub Release
     needs: [validate-inputs]

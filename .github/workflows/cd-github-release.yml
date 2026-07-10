@@ -51,6 +51,17 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     steps:
+      # An empty artifact-name would make download-artifact fetch every artifact in the run.
+      - name: Validate inputs
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        run: |
+          set -euo pipefail
+          [ -n "$TAG" ] || { echo "::error::tag input must not be empty"; exit 1; }
+          [ -n "$ARTIFACT_NAME" ] || { echo "::error::artifact-name input must not be empty"; exit 1; }
+
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 

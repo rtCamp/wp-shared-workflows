@@ -46,6 +46,20 @@ jobs:
     name: Deploy to WordPress.org
     runs-on: ubuntu-latest
     steps:
+      # An empty slug would fall back to the deploy action's repo-name default and
+      # deploy to the wrong plugin; an empty artifact-name downloads every artifact.
+      - name: Validate inputs
+        shell: bash
+        env:
+          SLUG: ${{ inputs.slug }}
+          TAG: ${{ inputs.tag }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        run: |
+          set -euo pipefail
+          [ -n "$SLUG" ] || { echo "::error::slug input must not be empty"; exit 1; }
+          [ -n "$TAG" ] || { echo "::error::tag input must not be empty"; exit 1; }
+          [ -n "$ARTIFACT_NAME" ] || { echo "::error::artifact-name input must not be empty"; exit 1; }
+
       # Needed so the 10up action can read assets-path from the workspace; the
       # plugin files themselves come from the downloaded artifact (BUILD_DIR).
       - name: Checkout repository
