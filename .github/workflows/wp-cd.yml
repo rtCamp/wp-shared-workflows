@@ -1,0 +1,177 @@
+name: CD / Orchestrator
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag that triggered the deploy, e.g. v1.2.3. Forwarded to every target."
+        type: string
+        required: true
+      artifact-name:
+        description: "Name of the build artifact every target downloads. Must match the name used by the producing job (e.g. ci-build.yml's artifact-name) in the same run."
+        type: string
+        required: true
+      deploy-target:
+        description: "Comma-separated list of deploy targets to run, no spaces: github, wporg, s3."
+        type: string
+        required: true
+      changelog-path:
+        description: "github: path to the changelog whose matching section becomes the Release body."
+        type: string
+        default: "CHANGELOG.md"
+      draft:
+        description: "github: create the GitHub Release as a draft."
+        type: boolean
+        default: false
+      prerelease:
+        description: "github: mark the GitHub Release as a prerelease."
+        type: boolean
+        default: false
+      slug:
+        description: "wporg: plugin slug on wordpress.org. Required when deploy-target includes wporg."
+        type: string
+        default: ""
+      assets-path:
+        description: "wporg: local directory mapped to SVN /assets/. Skipped if it does not exist."
+        type: string
+        default: ".wordpress-org"
+      dry-run:
+        description: "wporg: run the full WordPress.org deploy except the final SVN commit."
+        type: boolean
+        default: false
+      bucket:
+        description: "s3: target S3 bucket name. Required when deploy-target includes s3."
+        type: string
+        default: ""
+      prefix:
+        description: "s3: optional S3 key prefix, e.g. 'plugins/myplugin/'. Include the trailing slash."
+        type: string
+        default: ""
+      cloudfront-distribution-id:
+        description: "s3: if set, invalidate /<prefix>* on this CloudFront distribution after upload."
+        type: string
+        default: ""
+      region:
+        description: "s3: AWS region of the bucket."
+        type: string
+        default: "us-east-1"
+    secrets:
+      WP_ORG_USERNAME:
+        description: "wporg: WordPress.org account username with commit access to the plugin. Required when deploy-target includes wporg."
+        required: false
+      WP_ORG_PASSWORD:
+        description: "wporg: WordPress.org account password. Required when deploy-target includes wporg."
+        required: false
+      AWS_ACCESS_KEY_ID:
+        description: "s3: AWS access key id with s3:PutObject on the prefix (and cloudfront:CreateInvalidation if a distribution id is set). Required when deploy-target includes s3."
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        description: "s3: AWS secret access key for the above key id. Required when deploy-target includes s3."
+        required: false
+
+# No top-level permissions block on purpose: a called workflow can only downgrade the
+# caller's grant, and the targets differ — cd-github-release needs contents: write,
+# wporg/s3 only read. Declaring write here would break wporg/s3-only callers running
+# with contents: read, so the caller's grant passes through unchanged and
+# cd-github-release asserts write itself when the github target runs.
+
+jobs:
+  # Fail fast on a bad target list or a target whose inputs/secrets are missing — a
+  # typo would otherwise silently deploy nothing, and a missing secret would fail
+  # mid-deploy instead of before any target starts.
+  validate-inputs:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deploy targets and their required inputs and secrets
+        env:
+          DEPLOY_TARGET: ${{ inputs.deploy-target }}
+          SLUG: ${{ inputs.slug }}
+          BUCKET: ${{ inputs.bucket }}
+          # Presence booleans only — no secret material lands in the environment.
+          HAS_WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME != '' }}
+          HAS_WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD != '' }}
+          HAS_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+          HAS_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_TARGET" ]; then
+            echo "::error::deploy-target must list at least one target: github, wporg, s3"
+            exit 1
+          fi
+          # The target jobs match comma-bounded (',github,'), so whitespace inside the
+          # list would silently disable a target — reject it here instead.
+          if [[ "$DEPLOY_TARGET" == *[[:space:]]* ]]; then
+            echo "::error::deploy-target must be comma-separated without spaces (got '$DEPLOY_TARGET')"
+            exit 1
+          fi
+          IFS=',' read -ra targets <<< "$DEPLOY_TARGET"
+          for target in "${targets[@]}"; do
+            case "$target" in
+              github) ;;
+              wporg)
+                [ -n "$SLUG" ] || { echo "::error::deploy-target 'wporg' requires the slug input"; exit 1; }
+                [ "$HAS_WP_ORG_USERNAME" = "true" ] || { echo "::error::deploy-target 'wporg' requires the WP_ORG_USERNAME secret"; exit 1; }
+                [ "$HAS_WP_ORG_PASSWORD" = "true" ] || { echo "::error::deploy-target 'wporg' requires the WP_ORG_PASSWORD secret"; exit 1; }
+                ;;
+              s3)
+                [ -n "$BUCKET" ] || { echo "::error::deploy-target 's3' requires the bucket input"; exit 1; }
+                [ "$HAS_AWS_ACCESS_KEY_ID" = "true" ] || { echo "::error::deploy-target 's3' requires the AWS_ACCESS_KEY_ID secret"; exit 1; }
+                [ "$HAS_AWS_SECRET_ACCESS_KEY" = "true" ] || { echo "::error::deploy-target 's3' requires the AWS_SECRET_ACCESS_KEY secret"; exit 1; }
+                ;;
+              "")
+                echo "::error::deploy-target contains an empty entry (got '$DEPLOY_TARGET')"
+                exit 1
+                ;;
+              *)
+                echo "::error::unknown deploy-target '$target' — valid targets: github, wporg, s3"
+                exit 1
+                ;;
+            esac
+          done
+
+  # Target matching is comma-bounded (like wp-ci's skip input) so a target name can
+  # never substring-match another; targets run in parallel — each deploys to a
+  # distinct destination.
+  github-release:
+    name: GitHub Release
+    needs: [validate-inputs]
+    if: contains(format(',{0},', inputs.deploy-target), ',github,')
+    uses: ./.github/workflows/cd-github-release.yml
+    with:
+      tag: ${{ inputs.tag }}
+      artifact-name: ${{ inputs.artifact-name }}
+      changelog-path: ${{ inputs.changelog-path }}
+      draft: ${{ inputs.draft }}
+      prerelease: ${{ inputs.prerelease }}
+
+  wporg:
+    name: WordPress.org deploy
+    needs: [validate-inputs]
+    if: contains(format(',{0},', inputs.deploy-target), ',wporg,')
+    uses: ./.github/workflows/cd-wp-org.yml
+    with:
+      slug: ${{ inputs.slug }}
+      tag: ${{ inputs.tag }}
+      artifact-name: ${{ inputs.artifact-name }}
+      assets-path: ${{ inputs.assets-path }}
+      dry-run: ${{ inputs.dry-run }}
+    secrets:
+      WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME }}
+      WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD }}
+
+  s3:
+    name: S3 deploy
+    needs: [validate-inputs]
+    if: contains(format(',{0},', inputs.deploy-target), ',s3,')
+    uses: ./.github/workflows/cd-s3.yml
+    with:
+      tag: ${{ inputs.tag }}
+      artifact-name: ${{ inputs.artifact-name }}
+      bucket: ${{ inputs.bucket }}
+      prefix: ${{ inputs.prefix }}
+      cloudfront-distribution-id: ${{ inputs.cloudfront-distribution-id }}
+      region: ${{ inputs.region }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
