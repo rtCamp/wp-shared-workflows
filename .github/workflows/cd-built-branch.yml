@@ -1,0 +1,630 @@
+name: CD / Built Branch
+
+# Builds a project and force-pushes source + generated output to a deploy branch, for platforms
+# that deploy from a branch rather than an artifact. See the README.
+#
+# Two invariants constrain any edit here:
+#   * the target branch is ONE commit whose parent is the source commit, so
+#     `git diff <source>..<target>` is exactly the generated files;
+#   * every run republishes EVERY target, so the branch is always a complete tree.
+
+on:
+  workflow_call:
+    inputs:
+      targets:
+        description: >-
+          JSON array of build target objects. Each needs "dir" (repo-relative; "." for a flat repo)
+          and may override name, php-version, node-version, composer-flags, build-command,
+          publish-paths, verify-paths, composer, node, optional. A target whose "dir" does not
+          exist fails the run unless "optional": true is set — that keeps a typo'd or removed
+          directory from silently shrinking what gets published, while still allowing a target
+          that has not been scaffolded yet to be listed in advance.
+        type: string
+        default: '[{"dir": "."}]'
+      target-branch:
+        description: "Branch the built tree is force-pushed to. Must allow force-pushes. Never commit to it by hand — every run rewrites it."
+        type: string
+        default: "main-built"
+      source-ref:
+        description: "Commit, tag or branch to build and publish. Empty uses the commit that triggered the caller. Pass a full 40-character SHA to rebuild an older commit (rollback)."
+        type: string
+        default: ""
+      publish-paths:
+        description: >-
+          Newline-separated generated paths to publish, relative to each target's dir. Empty
+          auto-resolves to 'vendor/' for Composer targets plus 'assets/build/' for Node ones. Keep
+          identical to the gate's gated-paths.
+        type: string
+        default: ""
+      verify-paths:
+        description: >-
+          Newline-separated paths that must exist after the build, relative to each target's dir.
+          Directories must be non-empty. Empty auto-resolves to 'vendor/autoload.php' for Composer
+          targets.
+        type: string
+        default: ""
+      node-version:
+        description: "Default Node.js version for every target, overridable per target."
+        type: string
+        default: "22"
+      php-version:
+        description: "Default PHP version for every target, overridable per target."
+        type: string
+        default: "8.3"
+      composer-flags:
+        description: "Flags passed to composer install."
+        type: string
+        default: "--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
+      build-command:
+        description: "Shell command that produces the production build, run in each target's dir. Empty defaults to 'npm run build:prod'. Only run for targets that have a package-lock.json."
+        type: string
+        default: ""
+      commit-subject:
+        description: "Subject line of the published commit. Empty uses 'build: publish built tree for <short-sha>'. The body always records the source ref, source commit and run URL."
+        type: string
+        default: ""
+      allow-rewind:
+        description: "Allow publishing a commit older than what the branch already publishes — a deliberate rollback. Off by default so an older tree cannot overwrite a newer one."
+        type: boolean
+        default: false
+      dry-run:
+        description: "Build, verify and create the commit, but do not push. Prints what would be published."
+        type: boolean
+        default: false
+      retention-days:
+        description: "Days to keep the intermediate build tarballs. Short by default — they are only a hand-off between jobs in the same run."
+        type: number
+        default: 3
+    secrets:
+      push-token:
+        description: >-
+          Optional token with 'contents: write' used for the push. Defaults to GITHUB_TOKEN. Supply
+          one when the push must trigger further workflow runs (GITHUB_TOKEN pushes never do) or a
+          ruleset needs a bypass actor.
+        required: false
+    outputs:
+      published:
+        description: "'true' when a commit was pushed to the target branch, 'false' on a dry run."
+        value: ${{ jobs.publish.outputs.published }}
+      published-sha:
+        description: "SHA of the commit created on the target branch. Empty on a dry run."
+        value: ${{ jobs.publish.outputs.published-sha }}
+      source-sha:
+        description: "Resolved source commit that was built. This is the published commit's parent."
+        value: ${{ jobs.discover.outputs.source-sha }}
+      targets:
+        description: "Resolved build matrix as compact JSON — the targets that were actually built."
+        value: ${{ jobs.discover.outputs.targets }}
+
+# No workflow-level permissions: each job declares its own. The CALLER must grant
+# `permissions: contents: write` — a called workflow can only reduce that grant.
+
+jobs:
+  discover:
+    name: Resolve build targets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      targets: ${{ steps.resolve.outputs.targets }}
+      count: ${{ steps.resolve.outputs.count }}
+      publish-paths: ${{ steps.resolve.outputs.publish-paths }}
+      source-sha: ${{ steps.resolve.outputs.source-sha }}
+      source-ref: ${{ steps.resolve.outputs.source-ref }}
+      skipped: ${{ steps.resolve.outputs.skipped }}
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ inputs.source-ref != '' && inputs.source-ref || github.sha }}
+
+      - name: Resolve targets into a build matrix
+        id: resolve
+        shell: bash
+        env:
+          INPUT_TARGETS: ${{ inputs.targets }}
+          INPUT_PUBLISH_PATHS: ${{ inputs.publish-paths }}
+          INPUT_VERIFY_PATHS: ${{ inputs.verify-paths }}
+          INPUT_PHP_VERSION: ${{ inputs.php-version }}
+          INPUT_NODE_VERSION: ${{ inputs.node-version }}
+          INPUT_COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+          INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+          SOURCE_REF: ${{ inputs.source-ref != '' && inputs.source-ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+
+          jq -e 'type == "array" and length > 0 and all(type == "object")' >/dev/null 2>&1 <<<"$INPUT_TARGETS" \
+            || { echo "::error::'targets' must be a non-empty JSON array of objects (got: $INPUT_TARGETS)"; exit 1; }
+
+          prefix_paths() {
+            local list="$1" label="$2" dir="$3" name="$4" out="" p
+            while IFS= read -r p; do
+              p="${p#./}"; p="${p%/}"
+              [ -n "$p" ] || continue
+              case "$p" in
+                /*)   echo "::error::${label} '$p' (target '$name') must be relative to the target dir" >&2; return 1 ;;
+                *..*) echo "::error::${label} '$p' (target '$name') must not contain '..'" >&2; return 1 ;;
+              esac
+              case "/$p/" in
+                */node_modules/*) echo "::error::${label} '$p' (target '$name') includes node_modules, which is never published" >&2; return 1 ;;
+              esac
+              if [ "$dir" = "." ]; then out="${out}${p}"$'\n'; else out="${out}${dir}/${p}"$'\n'; fi
+            done <<< "$list"
+            printf '%s' "${out%$'\n'}"
+          }
+
+          items='[]'
+          seen=""
+          skipped=""
+          while IFS= read -r item; do
+            dir="$(jq -r '.dir // ""' <<<"$item")"
+            [ -n "$dir" ] || { echo "::error::every 'targets' entry needs a \"dir\" key (offending entry: $item)"; exit 1; }
+            dir="${dir#./}"; dir="${dir%/}"; [ -n "$dir" ] || dir="."
+            case "$dir" in
+              /*)   echo "::error::target dir '$dir' must be repo-relative, not absolute"; exit 1 ;;
+              *..*) echo "::error::target dir '$dir' must not contain '..'"; exit 1 ;;
+            esac
+
+            optional="$(jq -r 'if has("optional") then (.optional | tostring) else "false" end' <<<"$item")"
+            if [ ! -d "$dir" ]; then
+              if [ "$optional" = "true" ]; then
+                echo "::warning::Skipping optional target '$dir' — it does not exist at ${source_sha}, so the published branch will NOT contain its build output."
+                skipped="${skipped}${dir}"$'\n'
+                continue
+              fi
+              echo "::error::target dir '$dir' does not exist at ${source_sha}. Add \"optional\": true if it is expected to appear later."
+              exit 1
+            fi
+
+            name="$(jq -r '.name // ""' <<<"$item")"
+            if [ -z "$name" ]; then
+              if [ "$dir" = "." ]; then name="root"; else name="${dir//\//-}"; fi
+            fi
+            case "$name" in
+              *[:/\\\"\<\>\|\*\?]*) echo "::error::target name '$name' contains a character an artifact name cannot hold (: / \\ \" < > | * ?)"; exit 1 ;;
+            esac
+            case "$seen" in
+              *"|${name}|"*) echo "::error::duplicate target name '$name' — give one of the entries an explicit \"name\"."; exit 1 ;;
+            esac
+            seen="${seen}|${name}|"
+
+            # npm ci requires a lockfile, so its presence is the predicate for "needs Node".
+            composer=false; [ -f "$dir/composer.json" ] && composer=true
+            ov="$(jq -r 'if has("composer") then (.composer | tostring) else "" end' <<<"$item")"
+            [ -n "$ov" ] && composer="$ov"
+
+            node=false; [ -f "$dir/package-lock.json" ] && node=true
+            ov="$(jq -r 'if has("node") then (.node | tostring) else "" end' <<<"$item")"
+            [ -n "$ov" ] && node="$ov"
+
+            if [ "$node" = "true" ] && [ ! -f "$dir/package-lock.json" ]; then
+              echo "::error::target '$name' needs Node but '$dir/package-lock.json' is missing — npm ci requires a lockfile."
+              exit 1
+            fi
+            if [ "$composer" != "true" ] && [ "$node" != "true" ]; then
+              echo "::error::target '$name' ($dir) has neither composer.json nor package-lock.json — nothing to build."
+              exit 1
+            fi
+
+            php_version="$(jq -r --arg d "$INPUT_PHP_VERSION" '.["php-version"] // $d' <<<"$item")"
+            node_version="$(jq -r --arg d "$INPUT_NODE_VERSION" '.["node-version"] // $d' <<<"$item")"
+            composer_flags="$(jq -r --arg d "$INPUT_COMPOSER_FLAGS" '.["composer-flags"] // $d' <<<"$item")"
+            build_command="$(jq -r --arg d "$INPUT_BUILD_COMMAND" '.["build-command"] // $d' <<<"$item")"
+            [ -n "$build_command" ] || build_command="npm run build:prod"
+
+            publish="$(jq -r 'if has("publish-paths") then (.["publish-paths"] | if type == "array" then join("\n") else tostring end) else "" end' <<<"$item")"
+            [ -n "$publish" ] || publish="$INPUT_PUBLISH_PATHS"
+            if [ -z "$publish" ]; then
+              [ "$composer" = "true" ] && publish="vendor/"
+              [ "$node" = "true" ] && publish="${publish:+${publish}$'\n'}assets/build/"
+            fi
+
+            verify="$(jq -r 'if has("verify-paths") then (.["verify-paths"] | if type == "array" then join("\n") else tostring end) else "" end' <<<"$item")"
+            [ -n "$verify" ] || verify="$INPUT_VERIFY_PATHS"
+            if [ -z "$verify" ] && [ "$composer" = "true" ]; then verify="vendor/autoload.php"; fi
+
+            publish_abs="$(prefix_paths "$publish" "publish path" "$dir" "$name")"
+            verify_abs="$(prefix_paths "$verify" "verify path" "$dir" "$name")"
+            [ -n "$publish_abs" ] || { echo "::error::target '$name' resolved to zero publish paths."; exit 1; }
+
+            echo "::notice::target '${name}' (${dir}) composer=${composer} node=${node} publishes: $(printf '%s' "$publish_abs" | paste -sd ' ' -)"
+
+            entry="$(jq -nc \
+              --arg name "$name" --arg dir "$dir" \
+              --arg composer "$composer" --arg node "$node" \
+              --arg php "$php_version" --arg nodever "$node_version" \
+              --arg cflags "$composer_flags" --arg bcmd "$build_command" \
+              --arg lock "${dir%/}/package-lock.json" \
+              --arg pp "$publish_abs" --arg vp "$verify_abs" \
+              '{name:$name, dir:$dir, composer:$composer, node:$node,
+                "php-version":$php, "node-version":$nodever,
+                "composer-flags":$cflags, "build-command":$bcmd,
+                lockfile:$lock, "publish-paths":$pp, "verify-paths":$vp}')"
+            items="$(jq -c --argjson e "$entry" '. + [$e]' <<<"$items")"
+          done < <(jq -c '.[]' <<<"$INPUT_TARGETS")
+
+          count="$(jq 'length' <<<"$items")"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No build targets resolved. Publishing an incomplete tree is never safe, so this is a hard failure rather than a no-op."
+            exit 1
+          fi
+
+          all_publish="$(jq -r '[.[] | .["publish-paths"]] | join("\n")' <<<"$items")"
+          {
+            echo "targets=$(jq -c '{include: .}' <<<"$items")"
+            echo "count=${count}"
+            echo "source-sha=${source_sha}"
+            echo "source-ref=${SOURCE_REF}"
+            echo "skipped<<__WP_SHARED_SKIPPED__"
+            printf '%s\n' "${skipped%$'\n'}"
+            echo "__WP_SHARED_SKIPPED__"
+            echo "publish-paths<<__WP_SHARED_PATHS__"
+            printf '%s\n' "$all_publish"
+            echo "__WP_SHARED_PATHS__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Show resolved matrix
+        shell: bash
+        # Via env, never interpolated: the JSON is caller-controlled, so one apostrophe inside
+        # single quotes would end the quote and run the rest as shell.
+        env:
+          TARGETS: ${{ steps.resolve.outputs.targets }}
+        run: printf '%s' "$TARGETS" | jq .
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [discover]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Read-only on purpose: this job runs third-party dependency code, so it must never hold a
+    # writable token. Only publish does, and it runs no dependency code.
+    permissions:
+      contents: read
+    # No `if:` guard: discover already fails on zero targets, and a guard here would turn that
+    # into a green run that publishes nothing.
+    strategy:
+      # Not fail-fast: surface every broken target in one run.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.targets) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ needs.discover.outputs.source-sha }}
+
+      - name: Set up PHP
+        if: ${{ matrix.composer == 'true' }}
+        uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+          tools: composer
+          # Raises the GitHub API rate limit when composer install resolves a VCS repo.
+          github-token: ${{ github.token }}
+
+      - name: Set up Node.js
+        if: ${{ matrix.node == 'true' }}
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          # setup-node is a JS action and ignores defaults.run.working-directory, so without
+          # this it looks for the lockfile at the repo root.
+          cache-dependency-path: ${{ matrix.lockfile }}
+
+      - name: Install Composer dependencies
+        if: ${{ matrix.composer == 'true' }}
+        run: composer install ${{ matrix.composer-flags }}
+
+      - name: Install npm dependencies
+        if: ${{ matrix.node == 'true' }}
+        run: npm ci
+
+      - name: Build production assets
+        if: ${{ matrix.node == 'true' }}
+        run: ${{ matrix.build-command }}
+
+      - name: Verify build output
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          TARGET_NAME: ${{ matrix.name }}
+          PUBLISH_PATHS: ${{ matrix.publish-paths }}
+          VERIFY_PATHS: ${{ matrix.verify-paths }}
+        run: |
+          set -euo pipefail
+          failed=0
+          check() {
+            if [ ! -e "$1" ]; then
+              echo "::error::${2} '$1' does not exist after building '${TARGET_NAME}'."
+              failed=1
+            elif [ -d "$1" ] && [ -z "$(find "$1" -mindepth 1 -print -quit)" ]; then
+              echo "::error::${2} '$1' is an empty directory after building '${TARGET_NAME}'."
+              failed=1
+            fi
+          }
+          while IFS= read -r p; do [ -n "$p" ] && check "$p" "Publish path" || true; done <<< "$PUBLISH_PATHS"
+          while IFS= read -r p; do [ -n "$p" ] && check "$p" "Verify path" || true; done <<< "$VERIFY_PATHS"
+          [ "$failed" -eq 0 ] || exit 1
+          echo "Build output for '${TARGET_NAME}' verified."
+
+      - name: Archive build output
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          TARGET_NAME: ${{ matrix.name }}
+          TARBALL: ${{ runner.temp }}/${{ matrix.name }}.tgz
+          PUBLISH_PATHS: ${{ matrix.publish-paths }}
+        run: |
+          set -euo pipefail
+          # tar FROM THE REPO ROOT so member paths stay repo-relative. Do NOT pass these
+          # directories to upload-artifact instead: it re-roots at their common ancestor, so
+          # themes/foo/vendor arrives as vendor/ and two targets' trees silently merge.
+          paths=()
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            paths+=("$p")
+          done <<< "$PUBLISH_PATHS"
+          [ "${#paths[@]}" -gt 0 ] || { echo "::error::no publish paths to archive for '${TARGET_NAME}'"; exit 1; }
+          tar -czf "$TARBALL" --owner=0 --group=0 --numeric-owner -- "${paths[@]}"
+          ls -lh "$TARBALL"
+
+      - name: Upload build output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: cd-built-branch-${{ matrix.name }}
+          path: ${{ runner.temp }}/${{ matrix.name }}.tgz
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish to ${{ inputs.target-branch }}
+    needs: [discover, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # Serialise publishes per target branch. Not cancel-in-progress: a cancelled run tells us
+    # nothing about whether its push landed.
+    concurrency:
+      group: cd-built-branch-${{ github.repository }}-${{ inputs.target-branch }}
+      cancel-in-progress: false
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      published-sha: ${{ steps.publish.outputs.published-sha }}
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: ${{ needs.discover.outputs.source-sha }}
+          # Full history: merge-base needs it, and the server rejects a push from a shallow clone.
+          fetch-depth: 0
+          token: ${{ secrets.push-token || github.token }}
+
+      - name: Download build tarballs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: ${{ runner.temp }}/built
+          pattern: cd-built-branch-*
+          merge-multiple: true
+
+      - name: Extract build tarballs
+        shell: bash
+        env:
+          DOWNLOAD_DIR: ${{ runner.temp }}/built
+          EXPECTED: ${{ needs.discover.outputs.count }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tarballs=("$DOWNLOAD_DIR"/*.tgz)
+          if [ "${#tarballs[@]}" -ne "$EXPECTED" ]; then
+            echo "::error::Downloaded ${#tarballs[@]} build tarball(s) but ${EXPECTED} target(s) were resolved. Refusing to publish a partial tree."
+            printf '  - %s\n' "${tarballs[@]}"
+            exit 1
+          fi
+          for t in "${tarballs[@]}"; do
+            echo "Extracting $(basename "$t")"
+            # Member paths are repo-relative, so extracting at the workspace root restores them.
+            tar -xzf "$t" -C "$GITHUB_WORKSPACE" --no-same-owner
+          done
+
+      - name: Publish built tree
+        id: publish
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          SOURCE_SHA: ${{ needs.discover.outputs.source-sha }}
+          SOURCE_REF: ${{ needs.discover.outputs.source-ref }}
+          # Set only when the caller named a ref: tells a deliberate rollback from a lost race.
+          EXPLICIT_SOURCE_REF: ${{ inputs.source-ref }}
+          PUBLISH_PATHS: ${{ needs.discover.outputs.publish-paths }}
+          COMMIT_SUBJECT: ${{ inputs.commit-subject }}
+          ALLOW_REWIND: ${{ inputs.allow-rewind }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # ls-remote exit 2 means "no such branch"; a bare `git fetch` cannot tell that apart.
+          set +e
+          git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1
+          ls_status=$?
+          set -e
+          case "$ls_status" in
+            0) branch_exists=true ;;
+            2) branch_exists=false ;;
+            *) echo "::error::Could not query origin for '${TARGET_BRANCH}' (git ls-remote exit ${ls_status})."; exit 1 ;;
+          esac
+
+          remote_tip=""
+          if [ "$branch_exists" = "true" ]; then
+            git fetch --no-tags origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+            remote_tip="$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")"
+
+            # Something newer is already live, so publishing would move the branch backwards.
+            # No source-ref means a run that lost a push race: skip green, the live tree is
+            # correct. An explicit ref means a deliberate rollback, which needs allow-rewind.
+            published_parent="$(git rev-parse --verify --quiet "refs/remotes/origin/${TARGET_BRANCH}^" || true)"
+            if [ -n "$published_parent" ] && [ "$published_parent" != "$SOURCE_SHA" ] \
+               && git merge-base --is-ancestor "$SOURCE_SHA" "$published_parent"; then
+              if [ "$ALLOW_REWIND" = "true" ]; then
+                echo "::warning::Rewinding '${TARGET_BRANCH}' from ${published_parent} to ${SOURCE_SHA} (allow-rewind is true)."
+              elif [ -z "$EXPLICIT_SOURCE_REF" ]; then
+                echo "::notice::Superseded — '${TARGET_BRANCH}' already publishes ${published_parent}," \
+                  "a descendant of this run's ${SOURCE_SHA}. A newer run got there first, so the live" \
+                  "tree is already ahead of this one. Nothing to do."
+                {
+                  echo "published=false"
+                  echo "published-sha="
+                } >> "$GITHUB_OUTPUT"
+                exit 0
+              else
+                echo "::error::'${TARGET_BRANCH}' already publishes ${published_parent}, which is newer" \
+                  "than the requested ${SOURCE_SHA}. Refusing to move the deploy branch backwards." \
+                  "Re-run with allow-rewind: true to publish an older commit on purpose."
+                exit 1
+              fi
+            fi
+          else
+            echo "::notice::'${TARGET_BRANCH}' does not exist yet — this run creates it."
+          fi
+
+          git checkout -B "$TARGET_BRANCH" "$SOURCE_SHA"
+
+          # A dependency installed from source leaves a nested .git, which `git add` records as a
+          # gitlink — publishing an empty directory in place of the package.
+          while IFS= read -r path; do
+            [ -n "$path" ] && [ -e "$path" ] || continue
+            while IFS= read -r nested; do
+              echo "::warning::Removing nested git directory '${nested}' before staging (a gitlink would publish an empty directory)."
+              rm -rf "$nested"
+            done < <(find "$path" -name .git -prune -print)
+          done <<< "$PUBLISH_PATHS"
+
+          # --force because publish paths are gitignored. Only these paths are staged.
+          missing=()
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            if [ -e "$path" ]; then
+              git add --force -- "$path"
+            else
+              missing+=("$path")
+            fi
+          done <<< "$PUBLISH_PATHS"
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Expected build output is missing after extracting the tarballs:"
+            printf '  - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+          if git diff --cached --quiet; then
+            echo "::error::Nothing was staged for '${TARGET_BRANCH}'. Either the tarballs were empty," \
+              "or the source branch already commits the generated output — it must be gitignored and" \
+              "blocked by ci-build-artifact-gate.yml."
+            exit 1
+          fi
+
+          short="$(git rev-parse --short "$SOURCE_SHA")"
+          subject="$COMMIT_SUBJECT"
+          [ -n "$subject" ] || subject="build: publish built tree for ${short}"
+
+          body="Generated by ${GITHUB_WORKFLOW} — ${RUN_URL}
+
+          Source ref:    ${SOURCE_REF}
+          Source commit: ${SOURCE_SHA}
+
+          Do not commit to '${TARGET_BRANCH}' directly. Every run of this workflow force-pushes a
+          single commit whose parent is the source commit, so any manual work here is lost without
+          warning. Change the source branch instead."
+
+          git commit --quiet -m "$subject" -m "$body"
+          git --no-pager show --stat --oneline HEAD | head -n 30
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::dry-run: the commit above was NOT pushed to '${TARGET_BRANCH}'."
+            {
+              echo "published=false"
+              echo "published-sha="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --force-with-lease so a concurrent push fails loudly rather than being clobbered.
+          # Plain --force when creating the branch, where there is no tip to lease against.
+          if [ "$branch_exists" = "true" ]; then
+            push_args=(--force-with-lease="refs/heads/${TARGET_BRANCH}:${remote_tip}")
+          else
+            push_args=(--force)
+          fi
+          if ! git push "${push_args[@]}" origin "HEAD:refs/heads/${TARGET_BRANCH}"; then
+            echo "::error::Push to '${TARGET_BRANCH}' was rejected. Check that the caller granted" \
+              "'permissions: contents: write', that the branch allows force-pushes (no protection rule" \
+              "or ruleset blocking them), and that another run did not publish concurrently."
+            exit 1
+          fi
+          {
+            echo "published=true"
+            echo "published-sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write run summary
+        if: ${{ always() && steps.publish.conclusion != 'skipped' }}
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          SOURCE_SHA: ${{ needs.discover.outputs.source-sha }}
+          SOURCE_REF: ${{ needs.discover.outputs.source-ref }}
+          COUNT: ${{ needs.discover.outputs.count }}
+          SKIPPED: ${{ needs.discover.outputs.skipped }}
+          PUBLISH_PATHS: ${{ needs.discover.outputs.publish-paths }}
+          PUBLISHED: ${{ steps.publish.outputs.published }}
+          PUBLISHED_SHA: ${{ steps.publish.outputs.published-sha }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Built branch"
+            echo
+            if [ "${PUBLISHED:-}" = "true" ]; then
+              echo "Force-pushed \`${TARGET_BRANCH}\` at \`${PUBLISHED_SHA}\`."
+            elif [ "$DRY_RUN" = "true" ]; then
+              echo "**Dry run** — the commit was created but not pushed."
+            else
+              echo "Publish did not complete. See the job log above."
+            fi
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Source ref | \`${SOURCE_REF}\` |"
+            echo "| Source commit | \`${SOURCE_SHA}\` |"
+            echo "| Target branch | \`${TARGET_BRANCH}\` |"
+            echo "| Targets built | ${COUNT} |"
+            echo
+            if printf '%s' "${SKIPPED:-}" | grep -q '[^[:space:]]'; then
+              echo "> **Optional targets skipped — their output is NOT on \`${TARGET_BRANCH}\`:**"
+              echo
+              printf '%s\n' "$SKIPPED" | sed '/^[[:space:]]*$/d; s/^/> - `/; s/$/`/'
+              echo
+            fi
+            echo "<details><summary>Published paths</summary>"
+            echo
+            echo '```'
+            printf '%s\n' "$PUBLISH_PATHS"
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            echo "Review exactly what was generated:"
+            echo
+            echo '```bash'
+            echo "git fetch origin ${TARGET_BRANCH}"
+            echo "git diff --stat ${SOURCE_SHA}..origin/${TARGET_BRANCH}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

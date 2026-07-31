@@ -47,30 +47,33 @@ Before adding any new action or step: check if an official option already exists
 
 ```
 .github/workflows/
-  ci-detect-changes.yml    Pre-run: changed file detection
-  ci-lint-css.yml          Stylelint
-  ci-lint-js.yml           ESLint + package.json validation
-  ci-lint-php.yml          PHPCS + optional PHPStan
-  ci-test-js.yml           Jest
-  ci-test-php.yml          PHPUnit (wp-env or standalone)
-  ci-test-a11y.yml         pa11y-ci WCAG2AA (label-triggered by default)
-  ci-build.yml             Build + optional artifact
-  wp-ci.yml                CI orchestrator (project-type presets)
-  cd-release.yml           GitHub Release + dist zip
-  cd-deploy-wporg.yml      WordPress.org SVN deploy (optional)
-  cd-deploy-vip.yml        WPVIP deploy (optional; via VIP-CLI)
-  cd-deploy-s3.yml         S3 artifact upload (optional; deferred to v1.1.0)
-  wp-cd.yml                CD orchestrator — caller picks deploy target(s) via `deploy-target` input
-  version-monitor.yml      Monthly version check
-README.md                  Caller examples — keep accurate
+  ci-detect-changes.yml         Pre-run: changed file detection (wraps the wp-tooling CLI)
+  ci-lint-css.yml               Stylelint
+  ci-lint-js.yml                ESLint + package.json validation
+  ci-lint-php.yml               PHPCS + optional PHPStan
+  ci-test-js.yml                Jest
+  ci-test-php.yml               PHPUnit (wp-env or standalone)
+  ci-test-a11y.yml              pa11y-ci WCAG2AA (opt-in via run-a11y)
+  ci-build.yml                  Build + optional artifact
+  ci-build-artifact-gate.yml    Fails a PR that commits build output
+  ci-test-build-artifact.yml    Boots the packaged artifact in real WordPress
+  wp-ci.yml                     CI orchestrator (project-type presets, one unit per call)
+  cd-github-release.yml         GitHub Release from a tag + artifact
+  cd-wp-org.yml                 WordPress.org SVN deploy
+  cd-s3.yml                     S3 artifact upload (+ optional CloudFront invalidation)
+  cd-built-branch.yml           Builds and force-pushes the built tree to a deploy branch
+  cd-split-composer-packages.yml  Mirrors Composer subtrees to standalone repos
+  wp-cd.yml                     CD orchestrator — deploy-target: github, wporg, s3
+  version-monitor.yml           Monthly version check
+README.md                       Caller examples — keep accurate
 ```
 
-Deploy workflows are all optional. Consumers list which deploy targets they want in the CD orchestrator call:
+Deploy workflows are all optional. For tag-driven releases, consumers list which targets they want in the CD orchestrator call:
 
 ```yaml
 uses: rtCamp/wp-shared-workflows/.github/workflows/wp-cd.yml@v1
 with:
-  deploy-target: "github,vip"   # or "github,wporg" or "github,s3"
+  deploy-target: "github,wporg"   # or "github,s3"
 ```
 
 ---

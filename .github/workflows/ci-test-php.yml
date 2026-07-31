@@ -12,7 +12,9 @@ on:
         type: string
         default: "22"
       wp-version:
-        description: "WordPress core version for wp-env, e.g. '6.8' (resolved as WordPress/WordPress#<version>). Empty uses the version from the consumer's .wp-env.json. Ignored when use-wp-env is false."
+        description: >-
+          WordPress core version for wp-env, e.g. '6.8' (resolved as WordPress/WordPress#<version>).
+          Empty uses the version from the consumer's .wp-env.json. Ignored when use-wp-env is false.
         type: string
         default: ""
       use-wp-env:
@@ -31,10 +33,6 @@ on:
         description: "Working directory for monorepos."
         type: string
         default: "."
-    secrets:
-      packages-token:
-        description: "Optional token with read access to private Composer source repos (e.g. rtCamp/wp-framework). Authenticates `composer install` on the host (via setup-php) and inside the wp-env container. Omit for projects with only public/Packagist deps."
-        required: false
 
 permissions:
   contents: read
@@ -62,9 +60,8 @@ jobs:
           php-version: ${{ inputs.php-version }}
           coverage: none
           tools: composer
-          # Authenticates the host `composer install` for private VCS deps. Falls back to
-          # the default GITHUB_TOKEN (rate-limit help only) when no packages-token is given.
-          github-token: ${{ secrets.packages-token || github.token }}
+          # Raises the GitHub API rate limit when composer install resolves a VCS repo.
+          github-token: ${{ github.token }}
 
       - name: Set up Node.js
         if: ${{ inputs.use-wp-env }}
@@ -72,6 +69,8 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
+          # setup-node is a JS action: without this it looks for the lockfile at the repo root.
+          cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
 
       - name: Install Composer dependencies
         run: composer install ${{ inputs.composer-flags }}
@@ -83,23 +82,6 @@ jobs:
       - name: Start wp-env
         if: ${{ inputs.use-wp-env }}
         run: npm run wp-env start
-
-      # Configure Composer auth inside the container so the in-container `composer install`
-      # (e.g. a pretest:php hook) can resolve private VCS deps. Secrets can't be used in
-      # `if:`, so guard on the env var inside the script — a no-op when no token is set.
-      - name: Configure Composer auth in wp-env
-        if: ${{ inputs.use-wp-env }}
-        env:
-          PACKAGES_TOKEN: ${{ secrets.packages-token }}
-        run: |
-          if [ -n "$PACKAGES_TOKEN" ]; then
-            # Only configure in-container auth when the container actually has Composer.
-            # Some consumers run PHPUnit against a host-installed vendor/ with no in-container
-            # composer, where an unconditional `composer config` would fail the job.
-            if npx wp-env run tests-cli -- sh -lc 'command -v composer >/dev/null 2>&1'; then
-              npx wp-env run tests-cli -- composer config --global github-oauth.github.com "$PACKAGES_TOKEN"
-            fi
-          fi
 
       - name: Run PHPUnit
         run: ${{ inputs.test-command != '' && inputs.test-command || (inputs.use-wp-env && 'npm run test:php' || 'vendor/bin/phpunit') }}

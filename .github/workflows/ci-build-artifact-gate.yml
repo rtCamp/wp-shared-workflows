@@ -49,9 +49,15 @@ jobs:
             exit 0
           fi
 
-          WORKING_DIR="${WORKING_DIR%/}"
-          if [[ -n "$WORKING_DIR" && "$WORKING_DIR" != "." ]]; then
-            ANCHORED="^${WORKING_DIR}/(${PATTERN})"
+          # Normalise AND regex-escape: an unescaped "." matches any character, and a leading
+          # "./" yields "^./themes/foo/" which matches nothing — silently passing the gate.
+          DIR="${WORKING_DIR:-.}"
+          DIR="${DIR#./}"
+          DIR="${DIR%/}"
+          [[ -n "$DIR" ]] || DIR="."
+          if [[ "$DIR" != "." ]]; then
+            DIR_RE=$(printf '%s' "$DIR" | sed 's/[][\\.|^$()*+?{}]/\\&/g')
+            ANCHORED="^${DIR_RE}/(${PATTERN})"
           else
             ANCHORED="^(${PATTERN})"
           fi

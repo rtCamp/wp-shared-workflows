@@ -4,11 +4,18 @@ on:
   workflow_call:
     inputs:
       project-type:
-        description: "Project shape that selects the job preset: plugin | theme | package."
+        description: "Shape of the project at working-dir, selecting the job preset: plugin | theme | package. Describes the one unit this call targets, not the repository."
         type: string
         required: true
+      working-dir:
+        description: >-
+          Directory holding the unit this run targets, relative to the repo root. '.' (default) is a
+          single-project repo; in a monorepo call this workflow once per unit. See the monorepo
+          recipes in the README.
+        type: string
+        default: "."
       skip:
-        description: "Comma-separated job ids to drop, e.g. 'a11y,test-php'. Ids: lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact, a11y."
+        description: "Comma-separated job ids to drop, e.g. 'a11y,test-php'. Ids: lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact, a11y, artifact-gate."
         type: string
         default: ""
       enable-phpstan:
@@ -36,46 +43,87 @@ on:
         type: string
         default: '[]'
       build-artifact-path:
-        description: "Path to the packaged, installable plugin/theme dir the build produces, e.g. 'dist/my-plugin/'. Required to run the build-artifact install test; empty skips it (the default build emits bare build/, which is not installable)."
+        description: >-
+          Path to the packaged, installable plugin/theme dir the build produces, e.g.
+          'dist/my-plugin/'. Required to run the build-artifact install test; empty skips it (the
+          default build emits bare build/, which is not installable).
         type: string
         default: ""
       build-artifact-slug:
-        description: "Plugin/theme slug to activate in the build-artifact test. Empty uses the repo name."
+        description: "Plugin/theme slug to activate in the build-artifact test. Empty uses working-dir's basename in a monorepo, or the repo name at the root."
         type: string
         default: ""
-    secrets:
-      wp-tooling-token:
-        description: "Token with read access to the private rtCamp/wp-tooling repo, forwarded to detect-changes to install the interim CLI. Required while that repo is private."
-        required: false
-      packages-token:
-        description: "Token with read access to private Composer source repos (e.g. rtCamp/wp-framework), forwarded to lint-php and test-php to authenticate `composer install`. Omit for projects with only public/Packagist deps. A single token may serve both wp-tooling-token and packages-token."
-        required: false
+      ignore-paths:
+        description: "Regex of paths detect-changes excludes from its counts and file lists. Empty uses the CLI's built-in ignore set."
+        type: string
+        default: ""
+      base-ref:
+        description: "Explicit git ref detect-changes diffs HEAD against. Empty lets the CLI resolve it from the PR base or push event."
+        type: string
+        default: ""
+      wp-tooling-ref:
+        description: "Git ref of rtCamp/wp-tooling's npm/wp-tooling branch that detect-changes installs the CLI from. Defaults to a pinned commit; override to track the branch tip."
+        type: string
+        # Keep in step with ci-detect-changes.yml's default.
+        default: "324e3a2ee59134de8dfddf36ba04ff2ca38e9afe"
+      gated-paths:
+        description: >-
+          Newline-separated path prefixes, relative to working-dir, whose contents must not be
+          committed in a PR (e.g. 'assets/build/'). Empty skips the artifact-gate job; set it only
+          where CI generates the build output.
+        type: string
+        default: ""
 
-# Cancel an in-progress run when the same ref is pushed again (e.g. a force-push).
+# project-type and working-dir are in the group so a monorepo caller invoking this workflow
+# once per unit does not have one call cancel its siblings. Uses the RAW input because
+# workflow-level concurrency cannot see job outputs.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ inputs.project-type }}-${{ inputs.working-dir }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # Fail fast on a bad project-type or matrix input — a typo otherwise silently runs nothing.
   validate-inputs:
     name: Validate inputs
     runs-on: ubuntu-latest
+    outputs:
+      # Children must consume this, NOT inputs.working-dir: an unnormalised "" or
+      # "./themes/foo" breaks cache-dependency-path and defeats artifact-gate's anchor.
+      working-dir: ${{ steps.check.outputs.working-dir }}
+      preset: ${{ steps.check.outputs.preset }}
+      artifact-name: ${{ steps.check.outputs.artifact-name }}
+      artifact-slug: ${{ steps.check.outputs.artifact-slug }}
+      install-path: ${{ steps.check.outputs.install-path }}
     steps:
-      - name: Check project-type and test-php matrix inputs
+      - name: Check inputs and resolve derived values
+        id: check
+        shell: bash
         env:
           PROJECT_TYPE: ${{ inputs.project-type }}
+          WORKING_DIR: ${{ inputs.working-dir }}
           PHP_VERSIONS: ${{ inputs.php-versions }}
           WP_VERSIONS: ${{ inputs.wp-versions }}
           TEST_PHP_EXCLUDE: ${{ inputs.test-php-exclude }}
+          ARTIFACT_SLUG: ${{ inputs.build-artifact-slug }}
+          REPO_NAME: ${{ github.event.repository.name }}
         run: |
+          set -euo pipefail
+
+          # The preset as data, in one place, rather than a disjunction repeated in eight `if:`s.
           case "$PROJECT_TYPE" in
-            plugin|theme|package) ;;
+            plugin|theme) preset="lint-css,lint-js,lint-php,test-js,test-php,build,build-artifact,a11y,artifact-gate" ;;
+            package)      preset="lint-php,test-php,artifact-gate" ;;
             *) echo "::error::project-type must be one of: plugin, theme, package (got '$PROJECT_TYPE')"; exit 1 ;;
           esac
+
+          dir="${WORKING_DIR:-.}"; dir="${dir#./}"; dir="${dir%/}"; [ -n "$dir" ] || dir="."
+          case "$dir" in
+            /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
+            *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
+          esac
+
           echo "$PHP_VERSIONS" | jq -e 'type == "array" and length > 0' >/dev/null \
             || { echo "::error::php-versions must be a non-empty JSON array (got '$PHP_VERSIONS') — use skip: test-php to disable PHP tests"; exit 1; }
           echo "$WP_VERSIONS" | jq -e 'type == "array" and length > 0' >/dev/null \
@@ -83,66 +131,97 @@ jobs:
           echo "$TEST_PHP_EXCLUDE" | jq -e 'type == "array"' >/dev/null \
             || { echo "::error::test-php-exclude must be a JSON array (got '$TEST_PHP_EXCLUDE')"; exit 1; }
 
-  # Backbone: never skippable. Emits the per-bucket change counts and file lists the
-  # jobs below gate on.
+          # upload-artifact rejects '/' in a name and 409s on a duplicate within a run, which
+          # two units sharing one name would hit.
+          if [ "$dir" = "." ]; then
+            artifact_name="wp-ci-build"
+          else
+            artifact_name="wp-ci-build-$(printf '%s' "$dir" | tr -c 'a-zA-Z0-9._-' '-')"
+          fi
+
+          # A monorepo's repo name is rarely the slug, so prefer the target directory's basename.
+          if [ -n "$ARTIFACT_SLUG" ]; then slug="$ARTIFACT_SLUG"
+          elif [ "$dir" != "." ];    then slug="$(basename "$dir")"
+          else                            slug="$REPO_NAME"
+          fi
+
+          if [ "$PROJECT_TYPE" = "theme" ]; then install_path="wp-content/themes"; else install_path="wp-content/plugins"; fi
+
+          {
+            echo "working-dir=${dir}"
+            echo "preset=,${preset},"
+            echo "artifact-name=${artifact_name}"
+            echo "artifact-slug=${slug}"
+            echo "install-path=${install_path}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Target '${dir}' (${PROJECT_TYPE}) — artifact '${artifact_name}', slug '${slug}'."
+
   detect-changes:
     name: Detect changes
     needs: [validate-inputs]
     uses: ./.github/workflows/ci-detect-changes.yml
-    secrets:
-      wp-tooling-token: ${{ secrets.wp-tooling-token }}
+    with:
+      # A path scope, not a cwd — the detector still diffs from the repo root.
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
+      ignore-paths: ${{ inputs.ignore-paths }}
+      base-ref: ${{ inputs.base-ref }}
+      wp-tooling-ref: ${{ inputs.wp-tooling-ref }}
 
   lint-css:
     name: Lint CSS
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       needs.detect-changes.outputs.css-count > 0
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && contains(needs.validate-inputs.outputs.preset, ',lint-css,')
       && !contains(format(',{0},', inputs.skip), ',lint-css,')
     uses: ./.github/workflows/ci-lint-css.yml
     with:
       changed-files: ${{ needs.detect-changes.outputs.css-files }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   lint-js:
     name: Lint JS
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       needs.detect-changes.outputs.js-count > 0
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && contains(needs.validate-inputs.outputs.preset, ',lint-js,')
       && !contains(format(',{0},', inputs.skip), ',lint-js,')
     uses: ./.github/workflows/ci-lint-js.yml
     with:
       changed-files: ${{ needs.detect-changes.outputs.js-files }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   lint-php:
     name: Lint PHP
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       needs.detect-changes.outputs.php-count > 0
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme' || inputs.project-type == 'package')
+      && contains(needs.validate-inputs.outputs.preset, ',lint-php,')
       && !contains(format(',{0},', inputs.skip), ',lint-php,')
     uses: ./.github/workflows/ci-lint-php.yml
     with:
       changed-files: ${{ needs.detect-changes.outputs.php-files }}
       enable-phpstan: ${{ inputs.enable-phpstan }}
-    secrets:
-      packages-token: ${{ secrets.packages-token }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-js:
     name: Test JS
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       needs.detect-changes.outputs.js-count > 0
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && contains(needs.validate-inputs.outputs.preset, ',test-js,')
       && !contains(format(',{0},', inputs.skip), ',test-js,')
     uses: ./.github/workflows/ci-test-js.yml
+    with:
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-php:
     name: Test PHP
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       needs.detect-changes.outputs.php-count > 0
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme' || inputs.project-type == 'package')
+      && contains(needs.validate-inputs.outputs.preset, ',test-php,')
       && !contains(format(',{0},', inputs.skip), ',test-php,')
     # Matrix: php-versions × wp-versions, minus test-php-exclude cells. With use-wp-env
     # (default) each cell boots @wordpress/env, pinning PHP + WP core; with use-wp-env
@@ -158,49 +237,65 @@ jobs:
       php-version: ${{ matrix.php }}
       wp-version: ${{ matrix.wp }}
       use-wp-env: ${{ inputs.use-wp-env }}
-    secrets:
-      packages-token: ${{ secrets.packages-token }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   build:
     name: Build
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && contains(needs.validate-inputs.outputs.preset, ',build,')
       && !contains(format(',{0},', inputs.skip), ',build,')
     uses: ./.github/workflows/ci-build.yml
     with:
       # Only upload when build-artifact runs (it consumes this); otherwise build just compiles.
       upload-artifact: ${{ inputs.build-artifact-path != '' }}
-      artifact-name: wp-ci-build
+      artifact-name: ${{ needs.validate-inputs.outputs.artifact-name }}
       artifact-path: ${{ inputs.build-artifact-path }}
       retention-days: 1
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
-  # Boots the packaged artifact in real WordPress to prove it installs. Opt-in: runs only
-  # when build-artifact-path points at an installable dir, since the default build emits
-  # bare build/. slug defaults to the repo name; install-path follows project-type.
+  # Opt-in: runs only when build-artifact-path points at an installable dir, since the default
+  # build emits bare build/.
   build-artifact:
     name: Test build artifact
-    needs: [detect-changes, build]
+    needs: [validate-inputs, detect-changes, build]
     if: >-
       inputs.build-artifact-path != ''
       && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && contains(needs.validate-inputs.outputs.preset, ',build-artifact,')
       && !contains(format(',{0},', inputs.skip), ',build-artifact,')
     uses: ./.github/workflows/ci-test-build-artifact.yml
     with:
-      artifact-name: wp-ci-build
-      slug: ${{ inputs.build-artifact-slug != '' && inputs.build-artifact-slug || github.event.repository.name }}
-      install-path: ${{ inputs.project-type == 'theme' && 'wp-content/themes' || 'wp-content/plugins' }}
+      artifact-name: ${{ needs.validate-inputs.outputs.artifact-name }}
+      slug: ${{ needs.validate-inputs.outputs.artifact-slug }}
+      install-path: ${{ needs.validate-inputs.outputs.install-path }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   # Opt-in: a11y is slow and needs pa11y config, so it stays off unless run-a11y is set
   # (wire it to the 'Run a11y' label at the caller). Matches the label-gated convention.
   a11y:
     name: Test accessibility
-    needs: [detect-changes]
+    needs: [validate-inputs, detect-changes]
     if: >-
       inputs.run-a11y
       && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
-      && (inputs.project-type == 'plugin' || inputs.project-type == 'theme')
+      && contains(needs.validate-inputs.outputs.preset, ',a11y,')
       && !contains(format(',{0},', inputs.skip), ',a11y,')
     uses: ./.github/workflows/ci-test-a11y.yml
+    with:
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
+
+  # Opt-in via gated-paths: fails a PR that commits build output, which is only correct where
+  # CI produces it. Needs only validate-inputs, so it runs alongside detect-changes.
+  artifact-gate:
+    name: Block committed build artifacts
+    needs: [validate-inputs]
+    if: >-
+      inputs.gated-paths != ''
+      && contains(needs.validate-inputs.outputs.preset, ',artifact-gate,')
+      && !contains(format(',{0},', inputs.skip), ',artifact-gate,')
+    uses: ./.github/workflows/ci-build-artifact-gate.yml
+    with:
+      gated-paths: ${{ inputs.gated-paths }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
