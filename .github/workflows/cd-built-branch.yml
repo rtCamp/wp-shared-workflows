@@ -135,10 +135,16 @@ jobs:
           INPUT_NODE_VERSION: ${{ inputs.node-version }}
           INPUT_COMPOSER_FLAGS: ${{ inputs.composer-flags }}
           INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
           SOURCE_REF: ${{ inputs.source-ref != '' && inputs.source-ref || github.ref_name }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
+
+          if [ "$TARGET_BRANCH" = "$SOURCE_REF" ]; then
+            echo "::error::target-branch '${TARGET_BRANCH}' is the ref being built. Publishing would commit generated output onto the source branch — use a dedicated branch."
+            exit 1
+          fi
 
           jq -e 'type == "array" and length > 0 and all(type == "object")' >/dev/null 2>&1 <<<"$INPUT_TARGETS" \
             || { echo "::error::'targets' must be a non-empty JSON array of objects (got: $INPUT_TARGETS)"; exit 1; }
@@ -476,6 +482,14 @@ jobs:
           if [ "$branch_exists" = "true" ]; then
             git fetch --no-tags origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
             remote_tip="$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")"
+
+            # A dedicated deploy branch is never in the source history — its tip is a generated commit.
+            if git merge-base --is-ancestor "$remote_tip" "$SOURCE_SHA"; then
+              echo "::error::'${TARGET_BRANCH}' is part of the history being built (its tip ${remote_tip}" \
+                "is an ancestor of ${SOURCE_SHA}), so publishing would commit generated output onto the" \
+                "source branch. Point target-branch at a dedicated branch only this workflow writes to."
+              exit 1
+            fi
 
             # Only ever move the branch forward: a lost push race skips green, an explicit ref is a
             # rollback needing allow-rewind, and a force-pushed source branch is refused outright.
