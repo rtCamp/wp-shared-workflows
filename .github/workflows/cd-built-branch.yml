@@ -151,9 +151,12 @@ jobs:
               case "$p" in
                 /*)   echo "::error::${label} '$p' (target '$name') must be relative to the target dir" >&2; return 1 ;;
                 *..*) echo "::error::${label} '$p' (target '$name') must not contain '..'" >&2; return 1 ;;
+                .)    echo "::error::${label} '.' (target '$name') would archive the whole tree, .git included — name the generated directories" >&2; return 1 ;;
               esac
               case "/$p/" in
                 */node_modules/*) echo "::error::${label} '$p' (target '$name') includes node_modules, which is never published" >&2; return 1 ;;
+                # A published .git overwrites the publish job's own, handing build-time dependency code its push credential.
+                */.git/*)         echo "::error::${label} '$p' (target '$name') includes .git, which is never published" >&2; return 1 ;;
               esac
               if [ "$dir" = "." ]; then out="${out}${p}"$'\n'; else out="${out}${dir}/${p}"$'\n'; fi
             done <<< "$list"
