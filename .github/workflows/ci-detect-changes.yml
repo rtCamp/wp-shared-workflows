@@ -147,6 +147,10 @@ jobs:
           dir="${dir#./}"
           dir="${dir%/}"
           [ -n "$dir" ] || dir="."
+          case "$dir" in
+            /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
+            *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
+          esac
 
           if [ "$dir" != "." ] && [ ! -d "$dir" ]; then
             echo "::error::working-dir '${WORKING_DIR}' does not exist in this repository."

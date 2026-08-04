@@ -26,7 +26,10 @@ on:
         type: string
         default: "main-built"
       source-ref:
-        description: "Commit, tag or branch to build and publish. Empty uses the commit that triggered the caller. Pass a full 40-character SHA to rebuild an older commit (rollback)."
+        description: >-
+          Commit, tag or branch to build and publish. Empty uses the commit that triggered the
+          caller. Pass a full 40-character SHA to rebuild an older commit; rolling back also needs
+          allow-rewind: true.
         type: string
         default: ""
       publish-paths:
@@ -64,7 +67,10 @@ on:
         type: string
         default: ""
       allow-rewind:
-        description: "Allow publishing a commit older than what the branch already publishes — a deliberate rollback. Off by default so an older tree cannot overwrite a newer one."
+        description: >-
+          Allow publishing a commit that is not a descendant of what the branch already publishes —
+          a deliberate rollback, or a rebuild after the source branch was force-pushed. Off by
+          default so an older or diverged tree cannot overwrite a newer one.
         type: boolean
         default: false
       dry-run:
@@ -468,15 +474,14 @@ jobs:
             git fetch --no-tags origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
             remote_tip="$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")"
 
-            # Something newer is already live, so publishing would move the branch backwards.
-            # No source-ref means a run that lost a push race: skip green, the live tree is
-            # correct. An explicit ref means a deliberate rollback, which needs allow-rewind.
+            # Only ever move the branch forward: a lost push race skips green, an explicit ref is a
+            # rollback needing allow-rewind, and a force-pushed source branch is refused outright.
             published_parent="$(git rev-parse --verify --quiet "refs/remotes/origin/${TARGET_BRANCH}^" || true)"
             if [ -n "$published_parent" ] && [ "$published_parent" != "$SOURCE_SHA" ] \
-               && git merge-base --is-ancestor "$SOURCE_SHA" "$published_parent"; then
+               && ! git merge-base --is-ancestor "$published_parent" "$SOURCE_SHA"; then
               if [ "$ALLOW_REWIND" = "true" ]; then
                 echo "::warning::Rewinding '${TARGET_BRANCH}' from ${published_parent} to ${SOURCE_SHA} (allow-rewind is true)."
-              elif [ -z "$EXPLICIT_SOURCE_REF" ]; then
+              elif [ -z "$EXPLICIT_SOURCE_REF" ] && git merge-base --is-ancestor "$SOURCE_SHA" "$published_parent"; then
                 echo "::notice::Superseded — '${TARGET_BRANCH}' already publishes ${published_parent}," \
                   "a descendant of this run's ${SOURCE_SHA}. A newer run got there first, so the live" \
                   "tree is already ahead of this one. Nothing to do."
@@ -486,9 +491,9 @@ jobs:
                 } >> "$GITHUB_OUTPUT"
                 exit 0
               else
-                echo "::error::'${TARGET_BRANCH}' already publishes ${published_parent}, which is newer" \
-                  "than the requested ${SOURCE_SHA}. Refusing to move the deploy branch backwards." \
-                  "Re-run with allow-rewind: true to publish an older commit on purpose."
+                echo "::error::'${TARGET_BRANCH}' already publishes ${published_parent}, which is not an" \
+                  "ancestor of ${SOURCE_SHA} — a rollback, or the source branch was force-pushed." \
+                  "Re-run with allow-rewind: true to publish ${SOURCE_SHA} on purpose."
                 exit 1
               fi
             fi
@@ -545,7 +550,7 @@ jobs:
           warning. Change the source branch instead."
 
           git commit --quiet -m "$subject" -m "$body"
-          git --no-pager show --stat --oneline HEAD | head -n 30
+          git --no-pager show --stat --oneline HEAD | sed -n '1,30p'
 
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::dry-run: the commit above was NOT pushed to '${TARGET_BRANCH}'."
@@ -557,11 +562,10 @@ jobs:
           fi
 
           # --force-with-lease so a concurrent push fails loudly rather than being clobbered.
-          # Plain --force when creating the branch, where there is no tip to lease against.
           if [ "$branch_exists" = "true" ]; then
             push_args=(--force-with-lease="refs/heads/${TARGET_BRANCH}:${remote_tip}")
           else
-            push_args=(--force)
+            push_args=(--force-with-lease="refs/heads/${TARGET_BRANCH}:")
           fi
           if ! git push "${push_args[@]}" origin "HEAD:refs/heads/${TARGET_BRANCH}"; then
             echo "::error::Push to '${TARGET_BRANCH}' was rejected. Check that the caller granted" \

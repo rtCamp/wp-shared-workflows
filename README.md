@@ -507,7 +507,7 @@ Builds the project and force-pushes **source plus generated output** (Composer `
 Two invariants make this safe to point a production environment at:
 
 - **The source branch never contains generated output.** Pair this workflow with `ci-build-artifact-gate.yml` on the *same* path list — whatever you gate, you publish.
-- **The target branch is always one commit whose parent is the source commit.** So `git diff main..main-built` shows exactly the generated files and nothing else, and rollback is just "re-run from an older commit".
+- **The target branch is always one commit whose parent is the source commit.** So `git diff main..main-built` shows exactly the generated files and nothing else.
 
 > **Requirements.** The caller must grant `permissions: contents: write` — a called workflow can only reduce the caller's grant, never raise it. The target branch must allow force-pushes. And note that **pushes made with the default `GITHUB_TOKEN` do not trigger further workflow runs**; if something must fire on a push to the deploy branch, supply `push-token`.
 
@@ -539,7 +539,7 @@ That 12-line caller covers a single-plugin or single-theme repo: `targets` defau
 | `composer-flags`  | string  | `--no-dev …`         | Flags passed to `composer install`.                                                          |
 | `build-command`   | string  | `""`                 | Empty defaults to `npm run build:prod`. Only run for targets with a `package-lock.json`.     |
 | `commit-subject`  | string  | `""`                 | Subject of the published commit. Empty uses `build: publish built tree for <short-sha>`.     |
-| `allow-rewind`    | boolean | `false`              | Allow publishing a commit older than what the branch already publishes (deliberate rollback). |
+| `allow-rewind`    | boolean | `false`              | Allow publishing a commit that is not a descendant of what the branch already publishes — a rollback, or a rebuild after the source branch was force-pushed. |
 | `dry-run`         | boolean | `false`              | Build, verify and commit, but do not push.                                                   |
 | `retention-days`  | number  | `3`                  | Days to keep the intermediate build tarballs.                                                |
 
@@ -554,7 +554,7 @@ That 12-line caller covers a single-plugin or single-theme repo: `targets` defau
 | `source-sha`    | Resolved source commit that was built — the published commit's parent. |
 | `targets`       | The resolved build matrix as compact JSON.                           |
 
-**Rollback**, two ways. Re-run an older successful run from the Actions UI and it republishes that run's commit. Or dispatch with `source-ref: <full SHA>` **and** `allow-rewind: true`; without the flag that dispatch is refused, since moving the deploy branch backwards should be deliberate.
+**Rollback** is a `workflow_dispatch` with `source-ref: <full SHA>` **and** `allow-rewind: true`. Without the flag the dispatch is refused, since moving the deploy branch off a newer tree should be deliberate. Re-running an older run from the Actions UI does *not* roll back — a re-run cannot change these inputs, so it is indistinguishable from a run that lost a push race and it ends green without publishing.
 
 **Losing a push race is not a failure.** If two pushes land close together and the newer run publishes first, the older run finds the branch already ahead of it, logs a `::notice::` and ends **green** without pushing — the correct tree is already live. Only an explicit `source-ref` rollback errors without `allow-rewind`.
 

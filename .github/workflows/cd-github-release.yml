@@ -66,6 +66,10 @@ jobs:
             /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
             *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
           esac
+          case "$CHANGELOG_PATH" in
+            /*)   echo "::error::changelog-path must be relative to working-dir (got '$CHANGELOG_PATH')"; exit 1 ;;
+            *..*) echo "::error::changelog-path must not contain '..' (got '$CHANGELOG_PATH')"; exit 1 ;;
+          esac
           if [ "$dir" != "." ]; then
             CHANGELOG_PATH="${dir}/${CHANGELOG_PATH#./}"
           fi

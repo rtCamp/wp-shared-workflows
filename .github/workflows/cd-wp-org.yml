@@ -100,6 +100,10 @@ jobs:
             /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
             *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
           esac
+          case "$ASSETS_PATH" in
+            /*)   echo "::error::assets-path must be relative to working-dir (got '$ASSETS_PATH')"; exit 1 ;;
+            *..*) echo "::error::assets-path must not contain '..' (got '$ASSETS_PATH')"; exit 1 ;;
+          esac
           if [ -n "$ASSETS_PATH" ] && [ "$dir" != "." ]; then
             ASSETS_PATH="${dir}/${ASSETS_PATH#./}"
           fi

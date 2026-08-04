@@ -10,8 +10,8 @@ on:
       working-dir:
         description: >-
           Directory holding the unit this run targets, relative to the repo root. '.' (default) is a
-          single-project repo; in a monorepo call this workflow once per unit. See the monorepo
-          recipes in the README.
+          single-project repo; where one repo holds several projects, call this workflow once per
+          unit.
         type: string
         default: "."
       skip:
@@ -136,7 +136,7 @@ jobs:
           if [ "$dir" = "." ]; then
             artifact_name="wp-ci-build"
           else
-            artifact_name="wp-ci-build-$(printf '%s' "$dir" | tr -c 'a-zA-Z0-9._-' '-')"
+            artifact_name="wp-ci-build-$(printf '%s' "$dir" | sed 's/-/--/g; s|/|-|g' | tr -c 'a-zA-Z0-9._-' '-')"
           fi
 
           # A monorepo's repo name is rarely the slug, so prefer the target directory's basename.
