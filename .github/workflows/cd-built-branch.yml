@@ -636,11 +636,11 @@ jobs:
             echo
             if [ "${PUBLISHED:-}" = "true" ]; then
               echo "Force-pushed \`${TARGET_BRANCH}\` at \`${PUBLISHED_SHA}\`."
-            elif [ "$DRY_RUN" = "true" ]; then
-              echo "**Dry run** — the commit was created but not pushed."
             elif [ "${SUPERSEDED:-}" = "true" ]; then
               echo "**Superseded** — a newer run already published a descendant of this run's" \
                 "source commit, so \`${TARGET_BRANCH}\` is already ahead. Nothing was pushed."
+            elif [ "$DRY_RUN" = "true" ]; then
+              echo "**Dry run** — the commit was created but not pushed."
             else
               echo "Publish did not complete. See the job log above."
             fi

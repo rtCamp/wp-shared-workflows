@@ -10,15 +10,16 @@ on:
       artifact-name:
         description: >-
           Name of the build artifact to download and attach. Must match the name used by the
-          producing job (e.g. ci-build.yml's artifact-name). A directory artifact is packaged into a
-          single <slug>.zip; an artifact that is already one file is attached as-is.
+          producing job (e.g. ci-build.yml's artifact-name). Packaged into a single <slug>.zip unless
+          the artifact is exactly one archive (.zip/.tar.gz/.tgz/.tar.bz2/.tar.xz/.tar), which is
+          attached as-is.
         type: string
         required: true
       slug:
         description: >-
           Directory name at the root of the packaged zip, e.g. 'acme-blocks', so the asset installs
           straight through wp-admin. Defaults to artifact-name. Ignored when the artifact is already
-          a single packaged file.
+          a single archive.
         type: string
         default: ""
       changelog-path:
@@ -131,9 +132,14 @@ jobs:
 
           # Already packaged by the build (artifact-path: dist/foo.zip) — attach it untouched.
           if [ ${#entries[@]} -eq 1 ] && [ -f "${entries[0]}" ]; then
-            echo "::notice::Attaching '${entries[0]}' as-is."
-            echo "asset=${entries[0]}" >> "$GITHUB_OUTPUT"
-            exit 0
+            lower="$(printf '%s' "${entries[0]}" | tr '[:upper:]' '[:lower:]')"
+            case "$lower" in
+              *.zip|*.tar.gz|*.tgz|*.tar.bz2|*.tar.xz|*.tar)
+                echo "::notice::Attaching '${entries[0]}' as-is (already an archive)."
+                echo "asset=${entries[0]}" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+            esac
           fi
 
           # Directory artifact: gh release create only accepts files, and a WordPress zip must carry
