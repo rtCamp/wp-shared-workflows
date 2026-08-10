@@ -82,30 +82,42 @@ jobs:
             composer-${{ runner.os }}-php${{ inputs.php-version }}-
 
       - name: Install Composer dependencies
-        run: composer install ${{ inputs.composer-flags }}
+        shell: bash
+        env:
+          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+        run: |
+          set -euo pipefail
+          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
+          composer install "${composer_args[@]}"
 
       - name: Run PHPCS
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed-files }}
+          PHPCS_COMMAND: ${{ inputs.phpcs-command }}
         run: |
           set -euo pipefail
+          # phpcs-command is a command and runs as shell; the report flags are appended as "$@" so
+          # they stay argv. The pipe to cs2pr stays out here, so a non-zero phpcs still trips
+          # pipefail exactly as before.
+          args=(-q --report=checkstyle --runtime-set ignore_warnings_on_exit 1)
           if [ -n "$CHANGED_FILES" ]; then
             tmp_list=$(mktemp)
             trap 'rm -f "$tmp_list"' EXIT
             printf '%s\n' "$CHANGED_FILES" > "$tmp_list"
-            ${{ inputs.phpcs-command }} --file-list="$tmp_list" \
-              -q --report=checkstyle \
-              --runtime-set ignore_warnings_on_exit 1 \
-              | cs2pr --graceful-warnings
-          else
-            ${{ inputs.phpcs-command }} -q --report=checkstyle \
-              --runtime-set ignore_warnings_on_exit 1 \
-              | cs2pr --graceful-warnings
+            args=(--file-list="$tmp_list" "${args[@]}")
           fi
+          bash -eo pipefail -c "$PHPCS_COMMAND \"\$@\"" _ "${args[@]}" \
+            | cs2pr --graceful-warnings
 
       - name: Run PHPStan
         if: ${{ inputs.enable-phpstan }}
-        run: >-
-          ${{ inputs.phpstan-command }}
-          ${{ inputs.phpstan-level != '' && format('--level={0}', inputs.phpstan-level) || '' }}
+        shell: bash
+        env:
+          PHPSTAN_COMMAND: ${{ inputs.phpstan-command }}
+          PHPSTAN_LEVEL: ${{ inputs.phpstan-level }}
+        run: |
+          set -eo pipefail
+          args=()
+          [ -z "$PHPSTAN_LEVEL" ] || args+=("--level=$PHPSTAN_LEVEL")
+          bash -eo pipefail -c "$PHPSTAN_COMMAND \"\$@\"" _ "${args[@]}"

@@ -8,9 +8,19 @@ on:
         type: string
         required: true
       artifact-name:
-        description: "Name of the build artifact to download and attach. Must match the name used by the producing job (e.g. ci-build.yml's artifact-name)."
+        description: >-
+          Name of the build artifact to download and attach. Must match the name used by the
+          producing job (e.g. ci-build.yml's artifact-name). A directory artifact is packaged into a
+          single <slug>.zip; an artifact that is already one file is attached as-is.
         type: string
         required: true
+      slug:
+        description: >-
+          Directory name at the root of the packaged zip, e.g. 'acme-blocks', so the asset installs
+          straight through wp-admin. Defaults to artifact-name. Ignored when the artifact is already
+          a single packaged file.
+        type: string
+        default: ""
       changelog-path:
         description: "Path to the changelog whose matching section becomes the release body."
         type: string
@@ -102,23 +112,52 @@ jobs:
             exit 1
           fi
 
+      - name: Package release asset
+        id: asset
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          SLUG: ${{ inputs.slug != '' && inputs.slug || inputs.artifact-name }}
+        run: |
+          set -euo pipefail
+          # dotglob so a plugin's .htaccess/.editorconfig is counted and packaged; bash's dotglob
+          # never matches '.' or '..', so the entry count stays honest.
+          shopt -s nullglob dotglob
+          entries=(artifact/*)
+          if [ ${#entries[@]} -eq 0 ]; then
+            echo "::error::Downloaded artifact '$ARTIFACT_NAME' contains no files to attach"
+            exit 1
+          fi
+
+          # Already packaged by the build (artifact-path: dist/foo.zip) — attach it untouched.
+          if [ ${#entries[@]} -eq 1 ] && [ -f "${entries[0]}" ]; then
+            echo "::notice::Attaching '${entries[0]}' as-is."
+            echo "asset=${entries[0]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Directory artifact: gh release create only accepts files, and a WordPress zip must carry
+          # a single <slug>/ root for wp-admin -> Upload Plugin to install it. Re-root, then zip.
+          case "$SLUG" in
+            */*|.|..|"") echo "::error::slug must be a plain directory name (got '$SLUG')"; exit 1 ;;
+          esac
+          mkdir -p "pkg/$SLUG"
+          cp -R artifact/. "pkg/$SLUG/"
+          ( cd pkg && zip -qr "../${SLUG}.zip" "$SLUG" )
+          echo "::notice::Packaged ${#entries[@]} top-level entries into ${SLUG}.zip (root: ${SLUG}/)."
+          echo "asset=${SLUG}.zip" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
-          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          ASSET: ${{ steps.asset.outputs.asset }}
           DRAFT: ${{ inputs.draft }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          files=(artifact/*)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::Downloaded artifact '$ARTIFACT_NAME' contains no files to attach"
-            exit 1
-          fi
-          args=(release create "$TAG" "${files[@]}" --verify-tag --title "$TAG" --notes-file release-notes.md)
+          args=(release create "$TAG" "$ASSET" --verify-tag --title "$TAG" --notes-file release-notes.md)
           if [ "$DRAFT" = "true" ]; then
             args+=(--draft)
           fi
