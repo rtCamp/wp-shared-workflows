@@ -11,4 +11,6 @@ jobs:
     uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
     with:
       working-dir: plugins/acme-blocks
-      gated-paths: assets/build/,dist/
+      gated-paths: |
+        assets/build/
+        dist/

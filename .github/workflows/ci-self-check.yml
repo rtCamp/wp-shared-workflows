@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: self-check-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+  group: self-check-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -17,8 +17,8 @@ jobs:
       project-type: plugin   # plugin | theme | package
 ```
 
-That is a complete CI setup: lint CSS/JS/PHP, Jest, PHPUnit, build, and an artifact gate — each job
-gated on what actually changed, so a docs-only PR runs almost nothing.
+That is a complete CI setup: lint CSS/JS/PHP, Jest, PHPUnit, and build — each job gated on what
+actually changed, so a docs-only PR runs almost nothing.
 
 ## Workflows
 
@@ -61,7 +61,8 @@ Each is opt-in — call the ones you need from your own release trigger.
 
 ## Versioning
 
-Pin a tag. Tags are immutable, so your pipeline changes only when you change the pin.
+Pin a version tag. `@v1` and `@v1.2` are aliases that move forward to compatible releases; an exact
+`@v1.2.3` never changes.
 
 | Pin | Resolves to |
 |---|---|

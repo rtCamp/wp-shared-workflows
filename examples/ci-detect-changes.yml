@@ -11,7 +11,7 @@ jobs:
     uses: rtCamp/wp-shared-workflows/.github/workflows/ci-detect-changes.yml@v1
     with:
       working-dir: plugins/acme-blocks
-      ignore-paths: docs/**,*.md
+      ignore-paths: '(^|/)docs/|\.md$'
 
   lint-php:
     needs: detect
