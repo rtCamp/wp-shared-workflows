@@ -18,8 +18,9 @@ on:
       slug:
         description: >-
           Directory name at the root of the packaged zip, e.g. 'acme-blocks', so the asset installs
-          straight through wp-admin. Defaults to artifact-name. Ignored when the artifact is already
-          a single archive.
+          straight through wp-admin. Letters, digits, dots, underscores and hyphens only, and not
+          leading with '-'. Defaults to artifact-name. Ignored when the artifact is already a single
+          archive.
         type: string
         default: ""
       changelog-path:
@@ -129,6 +130,10 @@ jobs:
             echo "::error::Downloaded artifact '$ARTIFACT_NAME' contains no files to attach"
             exit 1
           fi
+          # A newline in a name would inject extra keys when the asset is written to $GITHUB_OUTPUT.
+          case "${entries[*]}" in
+            *$'\n'*) echo "::error::Artifact '$ARTIFACT_NAME' contains a file whose name has a newline"; exit 1 ;;
+          esac
 
           # Already packaged by the build (artifact-path: dist/foo.zip) — attach it untouched.
           if [ ${#entries[@]} -eq 1 ] && [ -f "${entries[0]}" ]; then
@@ -144,8 +149,13 @@ jobs:
 
           # Directory artifact: gh release create only accepts files, and a WordPress zip must carry
           # a single <slug>/ root for wp-admin -> Upload Plugin to install it. Re-root, then zip.
+          # Restricted charset: the slug becomes a directory, an archive name and a $GITHUB_OUTPUT
+          # value, and a leading '-' would reach gh release create as a flag rather than a path.
           case "$SLUG" in
-            */*|.|..|"") echo "::error::slug must be a plain directory name (got '$SLUG')"; exit 1 ;;
+            -*|*[!a-zA-Z0-9._-]*|.|..|"")
+              echo "::error::slug must be letters, digits, dots, underscores or hyphens, and must not start with '-' (got '$SLUG')"
+              exit 1
+              ;;
           esac
           mkdir -p "pkg/$SLUG"
           cp -R artifact/. "pkg/$SLUG/"
