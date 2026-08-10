@@ -35,6 +35,12 @@ on:
         description: "Comma-separated wp doctor check names excluded from the error gate. Defaults to production-oriented checks that wp-env's dev defaults always trip (e.g. WP_DEBUG being on)."
         type: string
         default: "constant-wp-debug-falsy"
+      working-dir:
+        description: >-
+          Working directory for monorepos. wp-env runs here and the artifact is downloaded into it.
+          Note: a .wp-env.override.json is written here, overwriting any existing file of that name.
+        type: string
+        default: "."
 
 permissions:
   contents: read
@@ -44,6 +50,9 @@ jobs:
     name: Boot artifact in wp-env
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-dir }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -57,7 +66,9 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: ${{ inputs.artifact-name }}
-          path: artifact
+          # download-artifact is a JS action: its path is workspace-relative, so it has to
+          # carry working-dir itself.
+          path: ${{ inputs.working-dir }}/artifact
 
       - name: Write wp-env override
         shell: bash

@@ -39,6 +39,8 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
+          # setup-node is a JS action: without this it looks for the lockfile at the repo root.
+          cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
 
       - name: Resolve Jest cache directory
         id: jest-cache

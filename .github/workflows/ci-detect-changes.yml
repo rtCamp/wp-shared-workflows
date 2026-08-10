@@ -15,40 +15,51 @@ on:
         description: "Explicit git ref to diff HEAD against. Empty lets the CLI resolve it from the PR base or push event."
         type: string
         default: ""
-    secrets:
-      wp-tooling-token:
-        description: "Token with read access to the private rtCamp/wp-tooling repo, used to clone the interim CLI. Required while that repo is private; omit once @rtcamp/wp-tooling is published or public."
-        required: false
+      working-dir:
+        description: >-
+          Directory the project lives in, relative to the repo root. A path scope, not a working
+          directory: the diff is always taken from the repo root. Restricts the css/js/php outputs
+          to it and makes those file lists relative to it; total/ignored/gha stay repo-wide.
+        type: string
+        default: "."
+      wp-tooling-ref:
+        description: "Git ref of rtCamp/wp-tooling's npm/wp-tooling branch to install the CLI from. Defaults to a pinned commit; override to track the branch tip. Obsolete once the package is on npm."
+        type: string
+        # npm/wp-tooling @ 2026-07-30. Pinned so that branch moving cannot change what CI runs.
+        default: "324e3a2ee59134de8dfddf36ba04ff2ca38e9afe"
     outputs:
       total-count:
-        description: "Number of changed files after the ignore filter."
+        description: >-
+          Number of changed files after the ignore filter. Always repo-wide, never restricted by
+          working-dir: the CLI buckets only CSS/JS/PHP/GHA, so a scoped total would drop every other
+          file type.
         value: ${{ jobs.detect.outputs.total-count }}
       ignored-count:
-        description: "Number of changed files dropped by the ignore filter."
+        description: "Number of changed files dropped by the ignore filter. Always repo-wide — NOT restricted by working-dir."
         value: ${{ jobs.detect.outputs.ignored-count }}
       css-count:
-        description: "Number of changed CSS/SCSS files."
+        description: "Number of changed CSS/SCSS files under working-dir."
         value: ${{ jobs.detect.outputs.css-count }}
       js-count:
-        description: "Number of changed JS files."
+        description: "Number of changed JS files under working-dir."
         value: ${{ jobs.detect.outputs.js-count }}
       php-count:
-        description: "Number of changed PHP files."
+        description: "Number of changed PHP files under working-dir."
         value: ${{ jobs.detect.outputs.php-count }}
       gha-count:
-        description: "Number of changed GitHub Actions workflow files."
+        description: "Number of changed GitHub Actions workflow files. Always repo-wide: workflow files only exist at .github/workflows/ in the repo root."
         value: ${{ jobs.detect.outputs.gha-count }}
       css-files:
-        description: "Newline-separated changed CSS/SCSS files. Pass straight into ci-lint-css.yml's changed-files."
+        description: "Newline-separated changed CSS/SCSS files, relative to working-dir. Pass straight into ci-lint-css.yml's changed-files, provided that workflow is given the same working-dir."
         value: ${{ jobs.detect.outputs.css-files }}
       js-files:
-        description: "Newline-separated changed JS files. Pass straight into ci-lint-js.yml's changed-files."
+        description: "Newline-separated changed JS files, relative to working-dir. Pass straight into ci-lint-js.yml's changed-files, provided that workflow is given the same working-dir."
         value: ${{ jobs.detect.outputs.js-files }}
       php-files:
-        description: "Newline-separated changed PHP files. Pass straight into ci-lint-php.yml's changed-files."
+        description: "Newline-separated changed PHP files, relative to working-dir. Pass straight into ci-lint-php.yml's changed-files, provided that workflow is given the same working-dir."
         value: ${{ jobs.detect.outputs.php-files }}
       gha-files:
-        description: "Newline-separated changed GitHub Actions workflow files."
+        description: "Newline-separated changed GitHub Actions workflow files, repo-root-relative. Always repo-wide — NOT restricted by working-dir."
         value: ${{ jobs.detect.outputs.gha-files }}
 
 permissions:
@@ -59,15 +70,17 @@ jobs:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
+      # css/js/php come from the scope step; total/ignored/gha stay repo-wide on detect.
       total-count: ${{ steps.detect.outputs.total-count }}
       ignored-count: ${{ steps.detect.outputs.ignored-count }}
-      css-count: ${{ steps.detect.outputs.css-count }}
-      js-count: ${{ steps.detect.outputs.js-count }}
-      php-count: ${{ steps.detect.outputs.php-count }}
+      css-count: ${{ steps.scope.outputs.css-count }}
+      js-count: ${{ steps.scope.outputs.js-count }}
+      php-count: ${{ steps.scope.outputs.php-count }}
+      # Workflow files only exist at the repo root, so scoping gha would always yield 0.
       gha-count: ${{ steps.detect.outputs.gha-count }}
-      css-files: ${{ steps.detect.outputs.css-files }}
-      js-files: ${{ steps.detect.outputs.js-files }}
-      php-files: ${{ steps.detect.outputs.php-files }}
+      css-files: ${{ steps.scope.outputs.css-files }}
+      js-files: ${{ steps.scope.outputs.js-files }}
+      php-files: ${{ steps.scope.outputs.php-files }}
       gha-files: ${{ steps.detect.outputs.gha-files }}
     steps:
       - name: Checkout repository
@@ -81,26 +94,18 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # Interim install until @rtcamp/wp-tooling is published. The CLI lives in the
-        # rtCamp/wp-tooling monorepo under node-packages/wp-tooling (npm can't install a git
-        # subdirectory), so clone the branch and install the subpath into a job-local prefix
-        # on PATH — no global. --install-links copies (vs symlinks) so the temp clone can be
-        # removed; the repo is private, so authenticate with wp-tooling-token when provided.
-        # TODO(wp-tooling publish): replace with `npm install --prefix … @rtcamp/wp-tooling`.
+        # @rtcamp/wp-tooling is not on the npm registry yet, so it is installed from the
+        # npm/wp-tooling branch, which carries the package at its root. Installed into a
+        # job-local prefix put on PATH rather than globally.
+        # TODO(wp-tooling publish): swap the git ref for a semver range and drop wp-tooling-ref.
         shell: bash
         env:
-          WP_TOOLING_TOKEN: ${{ secrets.wp-tooling-token }}
+          WP_TOOLING_REF: ${{ inputs.wp-tooling-ref }}
         run: |
           set -euo pipefail
-          src="$(mktemp -d)"
-          trap 'rm -rf "$src"' EXIT
-          repo="https://github.com/rtCamp/wp-tooling.git"
-          if [ -n "${WP_TOOLING_TOKEN:-}" ]; then
-            repo="https://x-access-token:${WP_TOOLING_TOKEN}@github.com/rtCamp/wp-tooling.git"
-          fi
-          git clone --depth 1 --branch release/v1.0.0 "$repo" "$src"
           prefix="$RUNNER_TEMP/wp-tooling"
-          npm install --install-links --prefix "$prefix" "$src/node-packages/wp-tooling"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$prefix" \
+            "github:rtCamp/wp-tooling#${WP_TOOLING_REF}"
           echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect changed files
@@ -119,3 +124,101 @@ jobs:
             args+=(--base "$BASE_REF")
           fi
           wp-tooling detect-changes "${args[@]}"
+
+      # The detector emits repo-root-relative paths but the linters run with cwd = working-dir,
+      # so an unscoped list resolves to <dir>/<dir>/<file>. At working-dir '.' this is a pure
+      # pass-through, counts included.
+      - name: Scope results to working-dir
+        id: scope
+        shell: bash
+        env:
+          WORKING_DIR: ${{ inputs.working-dir }}
+          TOTAL_COUNT: ${{ steps.detect.outputs.total-count }}
+          CSS_FILES: ${{ steps.detect.outputs.css-files }}
+          JS_FILES: ${{ steps.detect.outputs.js-files }}
+          PHP_FILES: ${{ steps.detect.outputs.php-files }}
+          CSS_COUNT: ${{ steps.detect.outputs.css-count }}
+          JS_COUNT: ${{ steps.detect.outputs.js-count }}
+          PHP_COUNT: ${{ steps.detect.outputs.php-count }}
+        run: |
+          set -euo pipefail
+
+          dir="${WORKING_DIR:-.}"
+          dir="${dir#./}"
+          dir="${dir%/}"
+          [ -n "$dir" ] || dir="."
+          case "$dir" in
+            /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
+            *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
+          esac
+
+          if [ "$dir" != "." ] && [ ! -d "$dir" ]; then
+            echo "::error::working-dir '${WORKING_DIR}' does not exist in this repository."
+            exit 1
+          fi
+
+          # Non-empty lines only, so an empty list counts 0 rather than 1.
+          count() { printf '%s' "${1-}" | awk 'NF{n++} END{print n+0}'; }
+
+          # Random delimiter so a crafted filename cannot forge a step output.
+          emit() {
+            local name="$1" val="${2-}" delim
+            delim="ghadelim_$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            {
+              printf '%s<<%s\n' "$name" "$delim"
+              if [ -n "$val" ]; then
+                printf '%s\n' "$val"
+              fi
+              printf '%s\n' "$delim"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          # Prefix stripped so a consumer with cwd=$dir can open them. String matching, not
+          # regex, so metacharacters in a path need no escaping.
+          scope() {
+            local p out=""
+            while IFS= read -r p; do
+              [ -n "$p" ] || continue
+              case "$p" in
+                "$dir"/*) out="${out}${p#"$dir"/}"$'\n' ;;
+              esac
+            done <<< "${1-}"
+            # No trailing newline: the lint workflows xargs this, so one would pass an extra
+            # empty path to the linter.
+            printf '%s' "${out%$'\n'}"
+          }
+
+          if [ "$dir" = "." ]; then
+            # Pure pass-through — the CLI's own counts are authoritative, so do not recount.
+            emit css-files "$CSS_FILES"
+            emit js-files  "$JS_FILES"
+            emit php-files "$PHP_FILES"
+            {
+              echo "css-count=${CSS_COUNT}"
+              echo "js-count=${JS_COUNT}"
+              echo "php-count=${PHP_COUNT}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          css="$(scope "$CSS_FILES")"
+          js="$(scope "$JS_FILES")"
+          php="$(scope "$PHP_FILES")"
+
+          css_n="$(count "$css")"; js_n="$(count "$js")"; php_n="$(count "$php")"
+          echo "::notice::Scoped to '${dir}/': css=${css_n} js=${js_n} php=${php_n}."
+
+          if [ "${TOTAL_COUNT:-0}" -gt 0 ] && [ "$css_n" -eq 0 ] && [ "$js_n" -eq 0 ] && [ "$php_n" -eq 0 ]; then
+            echo "::warning::${TOTAL_COUNT} file(s) changed in this repository but none are in scope" \
+              "for '${dir}', so no lint, test or build job ran for it. If this unit depends on code" \
+              "outside '${dir}', that dependency is not covered by this call."
+          fi
+
+          emit css-files "$css"
+          emit js-files  "$js"
+          emit php-files "$php"
+          {
+            echo "css-count=${css_n}"
+            echo "js-count=${js_n}"
+            echo "php-count=${php_n}"
+          } >> "$GITHUB_OUTPUT"

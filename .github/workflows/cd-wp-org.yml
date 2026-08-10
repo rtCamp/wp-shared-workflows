@@ -23,6 +23,13 @@ on:
         description: "Run the full deploy except the final SVN commit."
         type: boolean
         default: false
+      working-dir:
+        description: >-
+          Directory the project lives in, relative to the repo root. A path prefix, not a working
+          directory: it prefixes assets-path only. The deployed files come from the artifact,
+          already scoped by its build.
+        type: string
+        default: "."
     secrets:
       WP_ORG_USERNAME:
         description: "WordPress.org account username with commit access to the plugin."
@@ -82,8 +89,25 @@ jobs:
         shell: bash
         env:
           ASSETS_PATH: ${{ inputs.assets-path }}
+          WORKING_DIR: ${{ inputs.working-dir }}
         run: |
           set -euo pipefail
+
+          # working-dir is a path prefix, not a cwd: only assets-path is read from the source.
+          dir="${WORKING_DIR:-.}"; dir="${dir#./}"; dir="${dir%/}"; [ -n "$dir" ] || dir="."
+          # Reject traversal — this is synced to the plugin's PUBLIC wordpress.org /assets/.
+          case "$dir" in
+            /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
+            *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
+          esac
+          case "$ASSETS_PATH" in
+            /*)   echo "::error::assets-path must be relative to working-dir (got '$ASSETS_PATH')"; exit 1 ;;
+            *..*) echo "::error::assets-path must not contain '..' (got '$ASSETS_PATH')"; exit 1 ;;
+          esac
+          if [ -n "$ASSETS_PATH" ] && [ "$dir" != "." ]; then
+            ASSETS_PATH="${dir}/${ASSETS_PATH#./}"
+          fi
+
           if [ -n "$ASSETS_PATH" ] && [ -d "$ASSETS_PATH" ]; then
             echo "assets_dir=$ASSETS_PATH" >> "$GITHUB_OUTPUT"
           else

@@ -6,7 +6,7 @@ Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — z
 
 - CI workflows — lint (PHP / JS / CSS), test (PHPUnit / Jest / pa11y), build, detect-changes
 - CI orchestrator — `wp-ci.yml` composes individual workflows based on `project-type` preset (plugin / theme / package)
-- CD workflows — GitHub Release, WordPress.org SVN deploy, S3 artifact upload
+- CD workflows — GitHub Release, WordPress.org SVN deploy, S3 artifact upload, built-branch publish
 - CD orchestrator — `wp-cd.yml`
 - Version monitor — `version-monitor.yml` runs monthly and opens draft PRs for version bumps
 
@@ -29,9 +29,6 @@ jobs:
     uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
     with:
       project-type: "plugin"   # plugin | theme | package
-    secrets:
-      # Read access to the private rtCamp/wp-tooling repo until it is published.
-      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
 ```
 
 ## Individual workflows
@@ -61,18 +58,12 @@ jobs:
       php-versions: '["8.1","8.2","8.3"]'
       wp-versions: '["6.7","6.8","6.9"]'
       test-php-exclude: '[{"php":"8.1","wp":"6.9"}]'
-    secrets:
-      # Read access to the private rtCamp/wp-tooling repo until it is published.
-      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
-      # Read access to private Composer source repos (e.g. rtCamp/wp-framework) so
-      # composer install can resolve them in lint-php / test-php. One token with access to
-      # every private repo involved can serve both secrets (wp-tooling-token + packages-token).
-      packages-token: ${{ secrets.RTCAMP_PACKAGES_TOKEN }}
 ```
 
 | Input              | Type    | Default      | Description                                                                                          |
 | ------------------ | ------- | ------------ | ---------------------------------------------------------------------------------------------------- |
-| `project-type`     | string  | —            | **Required.** `plugin` \| `theme` \| `package` — selects the job preset.                             |
+| `project-type`     | string  | —            | **Required.** `plugin` \| `theme` \| `package` — selects the job preset. Describes the unit at `working-dir`, not the repository. |
+| `working-dir`      | string  | `"."`        | Directory holding the unit this call targets, relative to the repo root. `"."` is the repo root itself. |
 | `skip`             | string  | `""`         | Comma-separated job ids to drop without forking the orchestrator. Disable PHP tests with `test-php` here — not an empty array. |
 | `enable-phpstan`   | boolean | `false`      | Run PHPStan (whole-project) after PHPCS in `lint-php`.                                                |
 | `run-a11y`         | boolean | `false`      | Run the `a11y` job. Off by default — slow and needs pa11y config. Gate it on the `Run a11y` label at the caller. |
@@ -81,32 +72,32 @@ jobs:
 | `wp-versions`      | string  | `[""]`       | JSON array of WordPress core versions for wp-env; crossed with `php-versions`. Empty string = `.wp-env.json` default; ignored when `use-wp-env: false`. |
 | `test-php-exclude` | string  | `[]`         | JSON array of `{php, wp}` cells to drop from the product; both keys must match a cell.               |
 | `build-artifact-path` | string | `""`      | Packaged installable plugin/theme dir the build produces (e.g. `dist/my-plugin/`). Set this to run the `build-artifact` install test; empty skips it. |
-| `build-artifact-slug` | string | `""`      | Slug to activate in the `build-artifact` test. Empty uses the repo name.                             |
-
-**Secrets:**
-
-- `wp-tooling-token` (optional) — forwarded to `detect-changes` to install the interim CLI from the private `rtCamp/wp-tooling` repo. Required until `@rtcamp/wp-tooling` is published.
-- `packages-token` (optional) — forwarded to `lint-php` and `test-php` to authenticate `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`). Omit for projects with only public/Packagist deps. A single token with read access to all the required private repos can serve both `wp-tooling-token` and `packages-token`.
+| `build-artifact-slug` | string | `""`      | Slug to activate in the `build-artifact` test. Empty uses `working-dir`'s basename, or the repo name when `working-dir` is `"."`. |
+| `ignore-paths`     | string  | `""`         | Regex of paths `detect-changes` excludes from its counts and file lists. Empty uses the CLI's built-in ignore set. |
+| `base-ref`         | string  | `""`         | Explicit git ref `detect-changes` diffs `HEAD` against. Empty lets the CLI resolve it from the PR base or push event. |
+| `gated-paths`      | string  | `""`         | Newline-separated path prefixes (relative to `working-dir`) that must not be committed in a PR, e.g. `assets/build/`. Empty skips the `artifact-gate` job entirely. |
+| `wp-tooling-ref`   | string  | pinned SHA   | Git ref of `rtCamp/wp-tooling`'s `npm/wp-tooling` branch that `detect-changes` installs the CLI from. Defaults to a pinned commit; override to track the branch tip. |
 
 **Project-type presets** (a job also runs only when `detect-changes` reports the relevant bucket changed):
 
 | Preset    | Jobs |
 | --------- | ---- |
-| `plugin`  | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡ |
-| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡ |
-| `package` | detect-changes, lint-php, test-php |
+| `plugin`  | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡, artifact-gate§ |
+| `theme`   | detect-changes, lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact†, a11y‡, artifact-gate§ |
+| `package` | detect-changes, lint-php, test-php, artifact-gate§ |
 
 † `build-artifact` runs only when `build-artifact-path` is set — the default `build` output is not an installable directory.
 ‡ `a11y` runs only when `run-a11y: true` — it is slow and needs pa11y config, so gate it on the `Run a11y` label at the caller.
+§ `artifact-gate` runs only when `gated-paths` is set. It fails a PR that commits generated output, so it is opt-in — set it only where CI produces that output rather than the repo committing it.
 
-Skippable job ids (for `skip`): `lint-css`, `lint-js`, `lint-php`, `test-js`, `test-php`, `build`, `build-artifact`, `a11y`. `validate-inputs` and `detect-changes` always run and aren't skippable. Matching is comma-exact, so `skip: build` drops `build` but not `build-artifact`.
+Skippable job ids (for `skip`): `lint-css`, `lint-js`, `lint-php`, `test-js`, `test-php`, `build`, `build-artifact`, `a11y`, `artifact-gate`. `validate-inputs` and `detect-changes` always run and aren't skippable. Matching is comma-exact, so `skip: build` drops `build` but not `build-artifact`.
 
 Notes:
 
-- **Concurrency** — duplicate runs on the same ref (e.g. a force-push) are cancelled (`concurrency: ci-${{ github.ref }}`, `cancel-in-progress: true`).
+- **Concurrency** — duplicate runs on the same ref (e.g. a force-push) are cancelled. The group includes `project-type` and `working-dir` (`ci-${{ github.ref }}-<project-type>-<working-dir>`) so that sibling calls do not cancel each other.
 - **PHP / WordPress matrix** — `test-php` fans out over `php-versions` × `wp-versions` minus `test-php-exclude`. With `use-wp-env: true` (the default) each cell boots `@wordpress/env`, pinning `WP_ENV_PHP_VERSION` and `WP_ENV_CORE` — this suits plugins, themes, and packages whose suite tests against WordPress (e.g. via `wp-phpunit`), and the consumer needs a `.wp-env.json` plus `wp-env` and `test:php` npm scripts. A pure Composer library sets `use-wp-env: false` to run **standalone** PHPUnit (`vendor/bin/phpunit`), where the `wp` dimension is inert and no Node/Docker is required. Node defaults to 22; defaults run a single PHP 8.3 leg against the consumer's `.wp-env.json` WordPress version.
 - **Static analysis & coverage** — PHPStan is off by default; opt in with `enable-phpstan: true`. The orchestrator does not yet produce a coverage report (a v1.x follow-up), so it does not fully replace a pipeline that gated on coverage.
-- **`build-artifact`** — opt-in. Set `build-artifact-path` to the installable dir your build produces (the default `build` output is bare `build/`, not installable); the `build` job then uploads that path and `build-artifact` boots it in WordPress. `build-artifact-slug` overrides the activated slug (defaults to the repo name); install path follows `project-type`.
+- **`build-artifact`** — opt-in. Set `build-artifact-path` to the installable dir your build produces (the default `build` output is bare `build/`, not installable); the `build` job then uploads that path and `build-artifact` boots it in WordPress. `build-artifact-slug` overrides the activated slug (it defaults to `basename(working-dir)`, or the repo name when `working-dir` is `"."`); install path follows `project-type`.
 
 ### `version-monitor.yml`: monthly version monitor
 
@@ -130,9 +121,6 @@ jobs:
     with:
       base-branch: main
       pr-assignees: "Adi-ty"
-    secrets:
-      # Read access to the private rtCamp/wp-tooling repo until it is published.
-      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
 ```
 
 | Input          | Type   | Default             | Description                                          |
@@ -141,8 +129,7 @@ jobs:
 | `base-branch`  | string | `"main"`            | Branch the draft PR is opened against.               |
 | `pr-label`     | string | `"version-monitor"` | Label applied to the draft PR.                       |
 | `pr-assignees` | string | `""`                | Comma-separated GitHub usernames assigned to the PR. |
-
-**Secret:** `wp-tooling-token` (optional) — token with read access to the private `rtCamp/wp-tooling` repo, used to install the interim CLI. Required until `@rtcamp/wp-tooling` is published; omit once it is public.
+| `wp-tooling-ref` | string | pinned SHA | Git ref of `rtCamp/wp-tooling`'s `npm/wp-tooling` branch the CLI is installed from. Defaults to a pinned commit; override to track the branch tip. |
 
 The calling job must grant `permissions: contents: write` and `pull-requests: write` so the workflow can push the `version-monitor/YYYY-MM` branch and open the PR, and the repo must have **Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests"** enabled, or PR creation is blocked. Major bumps are never auto-applied — a bare version-string swap is rarely a safe major upgrade — so a month of only major bumps produces no diff and no PR; the run fails with the bump list in the log so they are surfaced rather than passing silently. The run also fails when a detector could not be checked (a PR may still carry the bumps that were found), so a scheduled run is never green while blind.
 
@@ -154,9 +141,6 @@ Buckets the files changed in a PR or push and exposes, per language bucket, both
 jobs:
   detect:
     uses: rtCamp/wp-shared-workflows/.github/workflows/ci-detect-changes.yml@v1
-    secrets:
-      # Read access to the private rtCamp/wp-tooling repo until it is published.
-      wp-tooling-token: ${{ secrets.WP_TOOLING_TOKEN }}
 
   lint-css:
     needs: detect
@@ -178,16 +162,19 @@ jobs:
 | `node-version` | string | `"22"`  | Node.js version used to run the wp-tooling CLI.                                             |
 | `ignore-paths` | string | `""`    | Regex of paths to exclude from counts and file lists. Empty uses the CLI's built-in ignore set. |
 | `base-ref`     | string | `""`    | Explicit ref to diff `HEAD` against. Empty lets the CLI resolve it from the PR base or push event. |
+| `wp-tooling-ref` | string | pinned SHA | Git ref of `rtCamp/wp-tooling`'s `npm/wp-tooling` branch the CLI is installed from. Defaults to a pinned commit; override to track the branch tip. |
+| `working-dir`  | string | `"."`   | Restricts the css/js/php counts and file lists to this directory, and makes those file lists relative to it. A **path scope, not a working directory** — the diff is always taken from the repo root. |
 
 | Output                                            | Description                                                                        |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `total-count` / `ignored-count`                   | Changed files kept after / dropped by the ignore filter.                           |
-| `css-count` / `js-count` / `php-count` / `gha-count` | Per-bucket change counts. Gate downstream jobs on these.                        |
-| `css-files` / `js-files` / `php-files` / `gha-files` | Newline-separated paths per bucket, ready for the lint workflows' `changed-files`. |
+| `total-count` / `ignored-count`                   | Changed files kept after / dropped by the ignore filter. **Always repo-wide** — not restricted by `working-dir`. |
+| `css-count` / `js-count` / `php-count` | Per-bucket change counts under `working-dir`. Gate downstream jobs on these.        |
+| `gha-count` / `gha-files`         | Changed workflow files. **Always repo-wide** — workflow files only exist at `.github/workflows/` in the repo root, so scoping them would always yield nothing. |
+| `css-files` / `js-files` / `php-files` | Newline-separated paths per bucket, **relative to `working-dir`**, ready for the lint workflows' `changed-files`. |
 
-**Secret:** `wp-tooling-token` (optional) — token with read access to the private `rtCamp/wp-tooling` repo, used to install the interim CLI. Required until `@rtcamp/wp-tooling` is published; omit once it is public.
+`@rtcamp/wp-tooling` is not on the npm registry yet, so the CLI is installed from the public `rtCamp/wp-tooling` repo's `npm/wp-tooling` branch, which carries the package at its root — no token needed. The install uses `--ignore-scripts`, and `wp-tooling-ref` defaults to a **pinned commit SHA** so a change on that branch cannot alter what your CI executes; override it to track the tip. The workflow runs unconditionally — count-based gating is the caller's (or orchestrator's) job, not the detector's.
 
-wp-tooling is installed from its `release/v1.0.0` branch until it is published to a registry. The workflow runs unconditionally — count-based gating is the caller's (or orchestrator's) job, not the detector's.
+> **Gate on the count, always.** An empty `changed-files` makes every lint workflow fall back to a whole-project run. Without the `if: … > 0` guard, a PR that touched no CSS would start the linter with nothing to do and it would silently lint the entire project instead of skipping.
 
 ### `ci-lint-css.yml`: Stylelint
 
@@ -206,7 +193,7 @@ jobs:
 | `node-version`  | string | `"22"`             | Node.js version.                                                             |
 | `lint-command`  | string | `"npm run lint:css"` | Whole-project Stylelint command. Used when `changed-files` is empty.       |
 | `changed-files` | string | `""`               | Newline-separated CSS files to lint. Empty = run `lint-command` whole-project. |
-| `working-dir`   | string | `"."`              | Working directory for monorepos.                                             |
+| `working-dir`   | string | `"."`              | Directory the job runs in.                                                   |
 
 ### `ci-lint-js.yml`: ESLint
 
@@ -226,7 +213,7 @@ jobs:
 | `lint-command`          | string  | `"npm run lint:js"` | Whole-project ESLint command. Used when `changed-files` is empty.          |
 | `changed-files`         | string  | `""`              | Newline-separated JS files to lint. Empty = run `lint-command` whole-project. |
 | `validate-package-json` | boolean | `true`            | Run `npm run lint:package-json` before ESLint.                               |
-| `working-dir`           | string  | `"."`             | Working directory for monorepos.                                             |
+| `working-dir`           | string  | `"."`             | Directory the job runs in.                                                   |
 
 ### `ci-lint-php.yml`: PHPCS + optional PHPStan
 
@@ -251,10 +238,7 @@ jobs:
 | `phpstan-level`    | string  | `""`                                                             | Override PHPStan level. Empty uses the level from `phpstan.neon.dist`.            |
 | `composer-flags`   | string  | `"--prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"` | Flags passed to `composer install`. Keeps `--no-scripts` for hygiene. |
 | `validate-composer`| boolean | `true`                                                           | Run `composer validate` before installing.                                       |
-| `working-dir`      | string  | `"."`                                                            | Working directory for monorepos.                                                 |
-
-**Secret:** `packages-token` (optional) — passed to setup-php to authenticate `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`). Omit for projects with only public/Packagist deps.
-
+| `working-dir`      | string  | `"."`                                                            | Directory the job runs in.                                                       |
 
 ### `ci-build.yml`: production build
 
@@ -318,7 +302,7 @@ jobs:
 | `artifact-name`         | string  | `"build"`                                                                                    | Artifact name. Must match the name in the downstream `actions/download-artifact` step. |
 | `artifact-path`         | string  | `"build/"`                                                                                   | Path to upload. Resolved as `working-dir/artifact-path`.                               |
 | `retention-days`        | number  | `7`                                                                                          | Days to keep the artifact before GitHub deletes it.                                    |
-| `working-dir`           | string  | `"."`                                                                                        | Working directory for monorepos.                                                       |
+| `working-dir`           | string  | `"."`                                                                                        | Directory the job runs in.                                                             |
 
 A misconfigured `artifact-path` fails loudly via `if-no-files-found: error`. No silent empty artifacts.
 ### `ci-test-php.yml`: PHPUnit
@@ -354,9 +338,7 @@ jobs:
 | `use-wp-env`     | boolean | `true`                                                        | Start `@wordpress/env` before tests for WordPress integration runs.        |
 | `test-command`   | string  | `""`                                                          | PHPUnit command. Empty means `npm run test:php` in wp-env mode, `vendor/bin/phpunit` standalone. |
 | `composer-flags` | string  | `"--no-interaction --prefer-dist --no-progress --no-scripts"` | Flags passed to `composer install`. Keep `--no-scripts` for supply-chain hygiene. |
-| `working-dir`    | string  | `"."`                                                         | Working directory for monorepos.                                           |
-
-**Secret:** `packages-token` (optional) — authenticates `composer install` for private Composer source repos (e.g. `rtCamp/wp-framework`) on the host (via setup-php) and inside the wp-env container. Omit for projects with only public/Packagist deps.
+| `working-dir`    | string  | `"."`                                                         | Directory the job runs in.                                                 |
 
 Each workflow can be called independently, so you can wire them into your own job graph if the orchestrator preset does not fit your setup.
 
@@ -380,7 +362,7 @@ jobs:
 | `node-version` | string  | `"22"`                     | Node.js version to install.                      |
 | `test-command` | string  | `"npm run test:js -- --ci"`| Shell command that runs Jest.                    |
 | `enable-cache` | boolean | `true`                     | Cache Jest transform/result data across runs.    |
-| `working-dir`  | string  | `"."`                      | Working directory for monorepos.                 |
+| `working-dir`  | string  | `"."`                      | Directory the job runs in.                       |
 
 ### `ci-test-a11y.yml` — accessibility tests
 
@@ -405,7 +387,7 @@ jobs:
 | `node-version`  | string | `"22"`                 | Node.js version to install.                                              |
 | `build-command` | string | `"npm run build:prod"` | Shell command that produces the production build pa11y will test against. |
 | `test-command`  | string | `"npm run test:a11y"`  | Shell command that runs pa11y-ci.                                        |
-| `working-dir`   | string | `"."`                  | Working directory for monorepos.                                         |
+| `working-dir`   | string | `"."`                  | Directory the job runs in.                                               |
 
 Step order is load-bearing: build runs **before** `wp-env start` so pa11y sees compiled CSS/JS. `wp-env stop` uses `if: always()` so a failing pa11y run does not leak a Docker stack into the next job.
 
@@ -436,29 +418,18 @@ jobs:
         public/build/
 ```
 
-**Monorepo:** scope the gate to one sub-package.
-
-```yaml
-jobs:
-  artifact-gate:
-    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
-    with:
-      gated-paths: "assets/build/"
-      working-dir: "packages/admin-ui"
-```
-
 | Input         | Type   | Default           | Description                                                                       |
 | ------------- | ------ | ----------------- | --------------------------------------------------------------------------------- |
 | `gated-paths` | string | `"assets/build/"` | Newline-separated path prefixes whose contents must not be committed in a PR.     |
-| `working-dir` | string | `"."`             | Working directory for monorepos. Path prefixes are anchored under this directory. |
+| `working-dir` | string | `"."`             | Directory the gated path prefixes are anchored under.                             |
 
 Only meaningful on `pull_request` events. On other triggers it logs a notice and exits 0 so the workflow stays inert outside PRs. The check compares `origin/<base>..HEAD` with `--diff-filter=ACMR`, so deletions are ignored: removing a previously-committed artifact in the PR does not trip the gate.
 
 ### `cd-split-composer-packages.yml`: split Composer packages to mirror repos
 
-Splits Composer-package subtrees out of a monorepo into standalone mirror repos (the Symfony "monorepo split" pattern), so Packagist can serve each package from its own repository. A `splitsh.json` (by default at the repo root) is the single source of truth — to add or remove a package, edit that file, never the workflow.
+Splits Composer-package subtrees out of one repository into standalone mirror repos, so Packagist can serve each package from its own repository. A `splitsh.json` (by default at the repo root) is the single source of truth — to add or remove a package, edit that file, never the workflow.
 
-`splitsh.json` lives in the **calling** monorepo (e.g. `wp-tooling`), not in this repo. As a reusable workflow, `actions/checkout` pulls the caller's repository by default, so the config is read from the caller's checkout — `config-file` is a path relative to that checkout, never the file's contents.
+`splitsh.json` lives in the **calling** repository (e.g. `wp-tooling`), not in this repo. As a reusable workflow, `actions/checkout` pulls the caller's repository by default, so the config is read from the caller's checkout — `config-file` is a path relative to that checkout, never the file's contents.
 
 `splitsh.json`:
 
@@ -480,7 +451,7 @@ Splits Composer-package subtrees out of a monorepo into standalone mirror repos 
 Caller — split on every `v*` tag push:
 
 ```yaml
-# .github/workflows/split.yml in the monorepo
+# .github/workflows/split.yml in the source repository
 name: Split Composer Packages
 on:
   push:
@@ -497,7 +468,7 @@ jobs:
 The reusable workflow owns no trigger of its own — the caller decides when it runs. To also allow a manual smoke-test run (the `workflow_dispatch` path the standalone version had), add the trigger and pass the tag through. On a manual run `github.ref_name` is a **branch**, not a tag, so the dispatch input must win:
 
 ```yaml
-# .github/workflows/split.yml in the monorepo
+# .github/workflows/split.yml in the source repository
 name: Split Composer Packages
 on:
   push:
@@ -527,7 +498,78 @@ jobs:
 | ------------- | -------- | ------------------------------------------------------------------------------------------------------ |
 | `split-token` | yes      | Token (fine-grained PAT or GitHub App token) with `contents: write` on every mirror repo in the config. |
 
-The `subtrees` map accepts both the shorthand string form (`"mirror": "path/in/monorepo"`) and the object form (`"mirror": { "prefixes": [{ "from": "path" }] }`). Each subtree is force-pushed to its mirror in parallel with `fail-fast: false`, so one failing package does not abort the rest. A missing or empty config fails the run loudly.
+The `subtrees` map accepts both the shorthand string form (`"mirror": "path/in/repo"    `) and the object form (`"mirror": { "prefixes": [{ "from": "path" }] }`). Each subtree is force-pushed to its mirror in parallel with `fail-fast: false`, so one failing package does not abort the rest. A missing or empty config fails the run loudly.
+
+### `cd-built-branch.yml`: publish the built tree to a deploy branch
+
+Builds the project and force-pushes **source plus generated output** (Composer `vendor/`, compiled `assets/build/`) to a dedicated branch, for platforms that deploy from a git branch rather than an artifact.
+
+Two invariants make this safe to point a production environment at:
+
+- **The source branch never contains generated output.** Pair this workflow with `ci-build-artifact-gate.yml` on the *same* path list — whatever you gate, you publish.
+- **The target branch is always one commit whose parent is the source commit.** So `git diff main..main-built` shows exactly the generated files and nothing else.
+
+> **Requirements.** The caller must grant `permissions: contents: write` — a called workflow can only reduce the caller's grant, never raise it. The target branch must allow force-pushes. And note that **pushes made with the default `GITHUB_TOKEN` do not trigger further workflow runs**; if something must fire on a push to the deploy branch, supply `push-token`.
+
+```yaml
+# .github/workflows/publish-built-branch.yml in the consumer
+name: Publish built branch
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-built-branch.yml@v1
+```
+
+That 12-line caller covers a single-plugin or single-theme repo: `targets` defaults to `[{"dir": "."}]`, and `vendor/` / `assets/build/` are inferred from the presence of `composer.json` and `package-lock.json`.
+
+| Input             | Type    | Default              | Description                                                                                  |
+| ----------------- | ------- | -------------------- | ---------------------------------------------------------------------------------------------- |
+| `targets`         | string  | `[{"dir": "."}]`     | JSON array of build **objects**. Each needs `dir`; may override `name`, `php-version`, `node-version`, `composer-flags`, `build-command`, `publish-paths`, `verify-paths`, `composer`, `node`, `optional`. Per-target `publish-paths`/`verify-paths` accept either a JSON array (`["vendor","dist"]`) or a newline string. |
+| `target-branch`   | string  | `"main-built"`       | Branch the built tree is force-pushed to. Must allow force-pushes.                           |
+| `source-ref`      | string  | `""`                 | Commit/tag/branch to build. Empty uses the triggering commit. A full SHA rebuilds an older commit. |
+| `publish-paths`   | string  | `""`                 | Newline-separated generated paths to publish, relative to each target's `dir`. Empty auto-resolves to `vendor/` (Composer targets) plus `assets/build/` (Node targets). |
+| `verify-paths`    | string  | `""`                 | Newline-separated paths that must exist after the build. Files must exist; directories must be non-empty. Empty auto-resolves to `vendor/autoload.php` for Composer targets. |
+| `node-version`    | string  | `"22"`               | Default Node.js version, overridable per target.                                             |
+| `php-version`     | string  | `"8.3"`              | Default PHP version, overridable per target.                                                 |
+| `composer-flags`  | string  | `--no-dev …`         | Flags passed to `composer install`.                                                          |
+| `build-command`   | string  | `""`                 | Empty defaults to `npm run build:prod`. Only run for targets with a `package-lock.json`.     |
+| `commit-subject`  | string  | `""`                 | Subject of the published commit. Empty uses `build: publish built tree for <short-sha>`.     |
+| `allow-rewind`    | boolean | `false`              | Allow publishing a commit that is not a descendant of what the branch already publishes — a rollback, or a rebuild after the source branch was force-pushed. |
+| `dry-run`         | boolean | `false`              | Build, verify and commit, but do not push.                                                   |
+| `retention-days`  | number  | `3`                  | Days to keep the intermediate build tarballs.                                                |
+
+| Secret           | Required | Description                                                                                  |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `push-token`     | no       | Token with `contents: write` used for the push. Supply one when the push must trigger further workflows, or when a ruleset needs a bypass actor. |
+
+| Output          | Description                                                          |
+| --------------- | ---------------------------------------------------------------------- |
+| `published`     | `'true'` when a commit was pushed; `'false'` on a dry run.           |
+| `published-sha` | SHA of the commit created on the target branch. Empty on a dry run.  |
+| `source-sha`    | Resolved source commit that was built — the published commit's parent. |
+| `targets`       | The resolved build matrix as compact JSON.                           |
+
+**Rollback** is a `workflow_dispatch` with `source-ref: <full SHA>` **and** `allow-rewind: true`. Without the flag the dispatch is refused, since moving the deploy branch off a newer tree should be deliberate. Re-running an older run from the Actions UI does *not* roll back — a re-run cannot change these inputs, so it is indistinguishable from a run that lost a push race and it ends green without publishing.
+
+**Losing a push race is not a failure.** If two pushes land close together and the newer run publishes first, the older run finds the branch already ahead of it, logs a `::notice::` and ends **green** without pushing — the correct tree is already live. Only an explicit `source-ref` rollback errors without `allow-rewind`.
+
+Notes:
+
+- **Every run rebuilds and republishes every target.** The branch must always be a complete deployable tree, and each run resets it to the source commit — so a skipped target would simply be absent, not stale. Consequently: **do not put a `paths:` filter on the push trigger.** A filtered-out commit leaves the branch's parent behind, and those changes never reach the deploy branch.
+- **A target's `dir` must exist, or the run fails** — a typo'd or removed path never silently shrinks the published tree. To list a plugin or theme that has not been scaffolded yet, mark it `"optional": true`; an absent optional target is skipped with a `::warning::` and listed in the run summary instead of failing the run.
+- **`node_modules/` is never published**, and listing it in `publish-paths` is a hard error. Only the declared paths are staged, so anything an npm lifecycle script wrote elsewhere stays out of the branch.
+- **Nested `.git` directories inside published paths are removed** before staging. A dependency installed from source leaves one, and `git add` would record it as a gitlink — publishing an empty directory instead of the package's files.
+- If the repo uses `* text=auto` in `.gitattributes`, add `vendor/** -text`. Line-ending normalisation is applied at `git add` time and can corrupt binary assets that lack a `binary` attribute.
+- The branch's history is rewritten on every run, so old trees are orphaned until GitHub's GC runs; server-side repo size grows over time. That is inherent to build-to-branch.
+- Not part of `wp-cd.yml`. That orchestrator is tag-and-artifact driven; this is push-and-self-building, and combining them would build the project twice.
+
+**Setup:** point your branch-deploy platform at `main-built`, keep PR CI on `main`, and never commit to `main-built` by hand.
+
 ### `ci-test-build-artifact.yml`: boot the built artifact
 
 A green `ci-build.yml` run only proves the build did not crash — not that the packaged output installs and boots. This workflow downloads the artifact, boots a real WordPress in [`@wordpress/env`](https://github.com/WordPress/gutenberg/tree/trunk/packages/env), activates the plugin/theme, and runs `wp doctor`. It catches PHP files referenced but never copied into the bundle, an over-eager `.distignore`, and path-cased files that break on Linux. Pair it with `ci-build.yml`.
@@ -573,8 +615,11 @@ jobs:
 | `install-path`  | string | `"wp-content/plugins"`| Destination under the WordPress root. A path ending in `themes` activates a theme, else a plugin.  |
 | `smoke-script`  | string | `""`                  | Optional path inside the artifact to a shell script, run in the container after activation.        |
 | `doctor-ignore-checks` | string | `"constant-wp-debug-falsy"` | Comma-separated `wp doctor` check names excluded from the error gate (production-oriented checks that wp-env's dev defaults always trip). |
+| `working-dir`    | string | `"."`                 | Directory the job runs in. wp-env runs here       (so a `.wp-env.json` in this directory is picked up) and the artifact is downloaded into it. |
 
 `wp doctor check --all` includes production-oriented checks that a dev wp-env always trips — notably `constant-wp-debug-falsy`, because wp-env enables `WP_DEBUG` by default. Those are excluded from the gate via `doctor-ignore-checks` (extend the comma-separated list if your wp-env config trips others); every other `error`-severity check still fails the build.
+
+The run writes a `.wp-env.override.json` into `working-dir`, **overwriting any existing file of that name**. The override clears `plugins` and `themes` and mounts only the downloaded artifact, so the boot tests the packaged output rather than the working tree that a consumer's own `.wp-env.json` would map.
 
 The artifact must be a **complete installable plugin/theme directory** (main PHP file plus assets), so point `ci-build.yml`'s `artifact-path` at a packaged dist directory, not bare `build/`. `actions/download-artifact` restores the uploaded directory contents uncompressed, so there is no unzip step. The workflow writes a `.wp-env.override.json` that pins `phpVersion`/`core` and mounts **only** the downloaded artifact — it clears `plugins`/`themes` from the consumer's `.wp-env.json` so the test reflects the packaged output in isolation, not the dev source tree. It then runs `wp <plugin|theme> activate <slug>` and `wp doctor check --all` (failing only on `error` severity), and always runs `wp-env stop` so no container leaks into the next job.
 
@@ -612,6 +657,7 @@ jobs:
 | `changelog-path` | string  | `"CHANGELOG.md"` | Changelog whose matching section becomes the release body.                        |
 | `draft`          | boolean | `false`          | Create the Release as a draft.                                                    |
 | `prerelease`     | boolean | `false`          | Mark the Release as a prerelease.                                                 |
+| `working-dir`    | string  | `"."`            | Prefixes `changelog-path`. A **path prefix, not a working directory** — the attached files come from the artifact, which the build already scoped. |
 
 The calling job must grant `permissions: contents: write`. The artifact must be produced **in the same workflow run** — `download-artifact` only sees the current run's artifacts. The changelog heading must contain the tag's version (`## v1.2.3` or `## [1.2.3]`, with an optional trailing date); `## Unreleased` is never matched. A missing or empty section fails the workflow rather than publishing a Release with no notes.
 
@@ -657,6 +703,7 @@ jobs:
 | `artifact-name` | string  | _(required)_       | **Required.** Build artifact to download and deploy (must match the producer). |
 | `assets-path`   | string  | `".wordpress-org"` | Local directory mapped to SVN `/assets/`. Skipped if absent.                 |
 | `dry-run`       | boolean | `false`            | Run the full deploy except the final SVN commit.                            |
+| `working-dir`   | string  | `"."`              | Prefixes `assets-path`. A **path prefix, not a working directory** — the deployed files come from the artifact, which the build already scoped. |
 
 | Secret            | Required | Description                                                            |
 | ----------------- | -------- | -------------------------------------------------------------------- |

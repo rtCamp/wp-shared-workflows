@@ -39,10 +39,6 @@ on:
         description: "Working directory for monorepos."
         type: string
         default: "."
-    secrets:
-      packages-token:
-        description: "Optional token with read access to private Composer source repos (e.g. rtCamp/wp-framework). Passed to setup-php so `composer install` can resolve private VCS dependencies. Omit for projects with only public/Packagist deps."
-        required: false
 
 permissions:
   contents: read
@@ -64,9 +60,8 @@ jobs:
           php-version: ${{ inputs.php-version }}
           tools: composer, cs2pr
           coverage: none
-          # Authenticates `composer install` for private VCS deps. Falls back to the
-          # default GITHUB_TOKEN (rate-limit help only) when no packages-token is given.
-          github-token: ${{ secrets.packages-token || github.token }}
+          # Raises the GitHub API rate limit when composer install resolves a VCS repo.
+          github-token: ${{ github.token }}
 
       - name: Validate composer.json
         if: ${{ inputs.validate-composer }}
@@ -80,7 +75,9 @@ jobs:
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles('**/composer.lock') }}
+          # Scoped to working-dir: a repo-wide '**/composer.lock' glob keys every target in
+          # a monorepo off the same hash, so they share (and clobber) one cache entry.
+          key: composer-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles(format('{0}/composer.lock', inputs.working-dir)) }}
           restore-keys: |
             composer-${{ runner.os }}-php${{ inputs.php-version }}-
 

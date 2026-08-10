@@ -23,6 +23,13 @@ on:
         description: "Mark the GitHub Release as a prerelease."
         type: boolean
         default: false
+      working-dir:
+        description: >-
+          Directory the project lives in, relative to the repo root. A path prefix, not a working
+          directory: it prefixes changelog-path only. The attached files come from the artifact,
+          already scoped by its build.
+        type: string
+        default: "."
 
 permissions:
   contents: write
@@ -47,8 +54,26 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
           CHANGELOG_PATH: ${{ inputs.changelog-path }}
+          WORKING_DIR: ${{ inputs.working-dir }}
         run: |
           set -euo pipefail
+
+          # working-dir is a path prefix, not a cwd: only the changelog is read from the source.
+          # Without it a monorepo silently picks up the ROOT changelog, which still parses.
+          dir="${WORKING_DIR:-.}"; dir="${dir#./}"; dir="${dir%/}"; [ -n "$dir" ] || dir="."
+          # Reject traversal — this file's contents become the public Release body.
+          case "$dir" in
+            /*)   echo "::error::working-dir must be relative to the repo root (got '$WORKING_DIR')"; exit 1 ;;
+            *..*) echo "::error::working-dir must not contain '..' (got '$WORKING_DIR')"; exit 1 ;;
+          esac
+          case "$CHANGELOG_PATH" in
+            /*)   echo "::error::changelog-path must be relative to working-dir (got '$CHANGELOG_PATH')"; exit 1 ;;
+            *..*) echo "::error::changelog-path must not contain '..' (got '$CHANGELOG_PATH')"; exit 1 ;;
+          esac
+          if [ "$dir" != "." ]; then
+            CHANGELOG_PATH="${dir}/${CHANGELOG_PATH#./}"
+          fi
+
           if [ ! -f "$CHANGELOG_PATH" ]; then
             echo "::error::Changelog not found at '$CHANGELOG_PATH'"
             exit 1
