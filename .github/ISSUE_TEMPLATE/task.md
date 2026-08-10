@@ -103,8 +103,8 @@ $ ...
 - [ ]
 
 ### Housekeeping
-- [ ] `CHANGELOG.md` entry under `## Unreleased`
-- [ ] `.claude/issues/<N>-<slug>.md` created and maintained
+- [ ] `CHANGELOG.md` entry under the current version heading
+- [ ] `examples/<workflow>.yml` added or updated to match
 
 ---
 

@@ -1,0 +1,29 @@
+name: Test build artifact
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      install-composer-deps: true
+      build-command: npm run build:prod && npm run package
+      upload-artifact: true
+      artifact-name: acme-blocks
+      artifact-path: dist/acme-blocks
+
+  test-build-artifact:
+    needs: build
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-build-artifact.yml@v1
+    with:
+      artifact-name: acme-blocks
+      slug: acme-blocks
+      working-dir: plugins/acme-blocks
+      php-version: "8.3"
+      wp-version: latest
+      install-path: wp-content/plugins

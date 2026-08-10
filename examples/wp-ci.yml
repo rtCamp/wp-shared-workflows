@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ${{ matrix.working-dir }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - working-dir: plugins/acme-blocks
+            project-type: plugin
+          - working-dir: plugins/acme-crm
+            project-type: plugin
+          - working-dir: themes/acme-theme
+            project-type: theme
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
+    with:
+      project-type: ${{ matrix.project-type }}
+      working-dir: ${{ matrix.working-dir }}
+      enable-phpstan: true
+      php-versions: '["8.2", "8.3", "8.4"]'
+      wp-versions: '["6.7", "6.8"]'
+      gated-paths: assets/build/
+      build-artifact-path: dist/

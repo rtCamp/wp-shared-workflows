@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      install-node-deps: true
+      install-composer-deps: true
+      node-version: "22"
+      php-version: "8.3"
+      build-command: npm run build:prod
+      upload-artifact: true
+      artifact-name: acme-blocks
+      artifact-path: dist/acme-blocks
+      retention-days: 7

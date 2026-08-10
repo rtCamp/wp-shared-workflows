@@ -1,0 +1,30 @@
+name: Detect changes
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-detect-changes.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      ignore-paths: '(^|/)docs/|\.md$'
+
+  lint-php:
+    needs: detect
+    if: needs.detect.outputs.php-count != '0'
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-php.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      changed-files: ${{ needs.detect.outputs.php-files }}
+
+  lint-js:
+    needs: detect
+    if: needs.detect.outputs.js-count != '0'
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-js.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      changed-files: ${{ needs.detect.outputs.js-files }}

@@ -362,8 +362,14 @@ jobs:
               failed=1
             fi
           }
-          while IFS= read -r p; do [ -n "$p" ] && check "$p" "Publish path" || true; done <<< "$PUBLISH_PATHS"
-          while IFS= read -r p; do [ -n "$p" ] && check "$p" "Verify path" || true; done <<< "$VERIFY_PATHS"
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            check "$p" "Publish path"
+          done <<< "$PUBLISH_PATHS"
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            check "$p" "Verify path"
+          done <<< "$VERIFY_PATHS"
           [ "$failed" -eq 0 ] || exit 1
           echo "Build output for '${TARGET_NAME}' verified."
 
@@ -523,7 +529,9 @@ jobs:
           # A dependency installed from source leaves a nested .git, which `git add` records as a
           # gitlink — publishing an empty directory in place of the package.
           while IFS= read -r path; do
-            [ -n "$path" ] && [ -e "$path" ] || continue
+            if [ -z "$path" ] || [ ! -e "$path" ]; then
+              continue
+            fi
             while IFS= read -r nested; do
               echo "::warning::Removing nested git directory '${nested}' before staging (a gitlink would publish an empty directory)."
               rm -rf "$nested"

@@ -1,0 +1,16 @@
+name: Lint JS
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-js:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-js.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      node-version: "22"
+      lint-command: npm run lint:js
+      validate-package-json: true

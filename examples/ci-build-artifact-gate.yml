@@ -1,0 +1,16 @@
+name: Block committed build artifacts
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-gate:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build-artifact-gate.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      gated-paths: |
+        assets/build/
+        dist/

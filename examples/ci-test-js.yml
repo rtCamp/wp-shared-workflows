@@ -1,0 +1,16 @@
+name: Test JS
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-js:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-js.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      node-version: "22"
+      test-command: npm run test:js -- --ci
+      enable-cache: true
