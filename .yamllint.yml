@@ -22,5 +22,4 @@ rules:
   document-start: disable
 
 ignore: |
-  .claude/
   node_modules/

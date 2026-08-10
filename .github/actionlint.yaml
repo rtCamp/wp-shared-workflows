@@ -1,0 +1,7 @@
+# SC2016 fires on every sed script that anchors with a literal '$'. These workflows are
+# full of them and the rule is informational, so it is excluded repo-wide. Keeping it here
+# rather than in a SHELLCHECK_OPTS env var means `actionlint <files>` just works.
+paths:
+  "**/*.yml":
+    ignore:
+      - 'shellcheck reported issue in this script: SC2016'

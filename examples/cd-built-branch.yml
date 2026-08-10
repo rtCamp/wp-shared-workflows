@@ -1,0 +1,37 @@
+name: Publish built branch
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      source-ref:
+        description: "Commit or ref to rebuild and republish. Empty builds the current branch tip."
+        type: string
+        default: ""
+      allow-rewind:
+        description: "Permit publishing a source ref older than what is already on the target branch."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-built-branch.yml@v1
+    with:
+      target-branch: main-built
+      source-ref: ${{ inputs.source-ref || '' }}
+      allow-rewind: ${{ inputs.allow-rewind || false }}
+      node-version: "22"
+      php-version: "8.3"
+      targets: >-
+        [
+        {"dir": "plugins/acme-blocks", "publish-paths": ["vendor", "assets/build"]},
+        {"dir": "plugins/acme-crm", "publish-paths": ["vendor"]},
+        {"dir": "themes/acme-theme", "publish-paths": ["assets/build"], "optional": true}
+        ]

@@ -1,0 +1,22 @@
+name: Test PHP
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-php:
+    name: PHP ${{ matrix.php-version }} / WP ${{ matrix.wp-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ["8.2", "8.3", "8.4"]
+        wp-version: ["6.7", "6.8"]
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-test-php.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      php-version: ${{ matrix.php-version }}
+      wp-version: ${{ matrix.wp-version }}
+      use-wp-env: true

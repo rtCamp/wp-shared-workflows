@@ -1,0 +1,47 @@
+name: Self Check
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-check-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  self-check:
+    name: Lint workflows and verify examples
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install yamllint
+        run: pipx install yamllint
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint.yml .github/workflows/ examples/
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          curl -sSfL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          install -m 0755 actionlint /usr/local/bin/actionlint
+
+      - name: Run actionlint
+        run: actionlint -color .github/workflows/*.yml examples/*.yml
+
+      - name: Verify examples match the workflows they call
+        run: bin/check-workflows.sh

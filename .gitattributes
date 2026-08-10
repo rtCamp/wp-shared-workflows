@@ -1,6 +1,3 @@
-# Per-issue Claude progress files — mostly additive; auto-resolve conflicts
-.claude/issues/*.md merge=union
-
 # Line endings
 * text=auto eol=lf
 *.bat text eol=crlf

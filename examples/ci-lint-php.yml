@@ -1,0 +1,17 @@
+name: Lint PHP
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-php:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-php.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      php-version: "8.3"
+      enable-phpstan: true
+      phpstan-level: "5"
+      validate-composer: true

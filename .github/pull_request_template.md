@@ -33,8 +33,9 @@ $ ...
 - [ ] Tests pass
 
 ### Housekeeping
-- [ ] `CHANGELOG.md` entry under `## Unreleased`
-- [ ] `.claude/issues/<N>-<slug>.md` updated with final state
+- [ ] `CHANGELOG.md` entry under the current version heading
+- [ ] `examples/<workflow>.yml` added or updated to match any input change
+- [ ] `yamllint`, `actionlint` and `bin/check-workflows.sh` pass locally
 
 ## Reviewer notes
 
@@ -48,4 +49,4 @@ $ ...
 
 ---
 
-<sub>Full decision log and verification history for this work lives in `.claude/issues/<N>-<slug>.md` on this branch.</sub>
+<sub>Conventions: [AGENTS.md](../AGENTS.md) · PR process: [CONTRIBUTING.md](../CONTRIBUTING.md)</sub>
