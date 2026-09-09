@@ -18,7 +18,6 @@ cd "$ROOT"
 
 WORKFLOW_DIR=".github/workflows"
 EXAMPLE_DIR="examples"
-SELF_CHECK="ci-self-check.yml"
 EXPECTED_REF="v1"
 USES_PREFIX="rtCamp/wp-shared-workflows/.github/workflows"
 
@@ -42,7 +41,8 @@ as_json() { yq -o=json '.' "$1"; }
 
 for wf in "$WORKFLOW_DIR"/*.yml; do
   base="$(basename "$wf")"
-  [ "$base" = "$SELF_CHECK" ] && continue
+  # Repository CI workflows are not callable and do not need consumer examples.
+  [ "$(yq '.on | has("workflow_call")' "$wf")" = "true" ] || continue
   [ -f "$EXAMPLE_DIR/$base" ] ||
     err "$wf has no caller example — create $EXAMPLE_DIR/$base"
 done

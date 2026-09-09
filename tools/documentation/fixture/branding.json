@@ -1,0 +1,12 @@
+{
+  "tagline": "Documentation fixture handbook",
+  "favicon": "img/logo.svg",
+  "staticDirectory": "assets",
+  "customCss": "brand.css",
+  "navbar": {
+    "title": "Fixture handbook",
+    "logo": { "alt": "Fixture logo", "src": "img/logo.svg" },
+    "items": [{ "type": "docSidebar", "sidebarId": "docs", "label": "Handbook", "position": "left" }]
+  },
+  "footer": { "copyright": "Fixture documentation team" }
+}

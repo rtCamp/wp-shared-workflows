@@ -1,0 +1,20 @@
+{
+  "name": "rtcamp-documentation-builder",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node cli.mjs start",
+    "build": "node cli.mjs build",
+    "serve": "node cli.mjs serve",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  }
+}

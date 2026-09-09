@@ -4,7 +4,9 @@
 brew install actionlint yq jq                                        # the only tooling this repo needs
 ```
 
-Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML or POSIX shell.
+Workflows are YAML with supporting shell automation. The documentation builder under
+`tools/documentation/` owns its Node dependencies, lockfile, configuration and tests.
+Run `npm ci && npm test` there; never commit dependencies or generated output.
 
 ### Key Directories
 
@@ -12,7 +14,9 @@ Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML 
 - `.github/workflows/wp-ci.yml` — CI orchestrator; composes the leaves and routes by `project-type`
 - `.github/workflows/cd-*.yml` — opt-in deploy leaves: `github-release`, `wp-org`, `s3`, `built-branch`
 - `.github/workflows/version-monitor.yml` — monthly version-bump check that opens a draft PR
-- `.github/workflows/ci-self-check.yml` — this repo's own CI; the only workflow not `on: workflow_call`
+- `.github/workflows/ci-self-check.yml` — this repo's own CI; a repository CI workflow rather than `on: workflow_call`
+- `.github/workflows/documentation-test.yml` — documentation unit tests and branded fixture build
+- `tools/documentation/` — standalone Docusaurus builder and consumer branding support
 - `examples/<name>.yml` — exactly one caller example per workflow, matched by filename
 - `bin/check-workflows.sh` — enforces the examples contract and the conventions below
 
@@ -70,7 +74,7 @@ jobs:
 - **Orchestrator plus leaves**: `wp-ci.yml` composes the CI leaves via `jobs.<id>.uses`, so a consumer wires up one job instead of ten. The `cd-*` workflows have no orchestrator by design — a consumer calls the ones it needs from its own release trigger, and each stays independently useful.
 - **One unit per call**: `project-type` describes the unit at `working-dir`, not the repository. A repo with two plugins and a theme calls `wp-ci.yml` three times, usually via a matrix in the caller. Sibling calls don't cancel each other, and each derives its own artifact name.
 - **Everything gated on what changed**: `ci-detect-changes.yml` buckets the diff and every downstream job keys off it, so a docs-only PR runs almost nothing.
-- **Logic that needs a real language lives elsewhere**: `@rtcamp/wp-tooling`, invoked as `npx wp-tooling <command>`. Repo-local automation is POSIX shell under `bin/`.
+- **Logic that needs a real language lives elsewhere**: `@rtcamp/wp-tooling`, invoked as `npx wp-tooling <command>`. Repo-local automation is POSIX shell under `bin/`. Action-specific Docusaurus code lives with its workflow under `tools/documentation/`.
 - **Examples are executable documentation**: one per workflow, verified in CI, comment-free, pinned `@v1`. They target a `wp-content`-shaped monorepo because that is the shape people get wrong. Anything consuming a build artifact shows the producing `ci-build` job and the `needs:` edge in the same file.
 - **Prefer official tooling**: `actions/checkout`, `actions/setup-node`, `shivammathur/setup-php`, and WordPress/Automattic-maintained actions over third-party ones.
 

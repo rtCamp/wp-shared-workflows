@@ -1,6 +1,6 @@
 # wp-shared-workflows
 
-Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — nothing to install.
+Reusable GitHub Actions workflows for rtCamp WordPress projects. Reusable workflows with supporting documentation tooling.
 
 ## Quick start
 
@@ -52,6 +52,14 @@ Each is opt-in — call the ones you need from your own release trigger.
 | [`cd-wp-org.yml`](.github/workflows/cd-wp-org.yml) | WordPress.org SVN deploy | [example](examples/cd-wp-org.yml) |
 | [`cd-s3.yml`](.github/workflows/cd-s3.yml) | S3 upload + optional CloudFront invalidation | [example](examples/cd-s3.yml) |
 | [`cd-built-branch.yml`](.github/workflows/cd-built-branch.yml) | Force-pushes source + generated output to a deploy branch | [example](examples/cd-built-branch.yml) |
+
+### Documentation
+
+| Workflow | What it does | Example |
+|---|---|---|
+| [`documentation.yml`](.github/workflows/documentation.yml) | Builds Docusaurus docs with repository branding and optionally deploys to GitHub Pages | [example](examples/documentation.yml) |
+
+See [documentation tooling](tools/documentation/README.md) for setup, branding and local development.
 
 ### Maintenance
 

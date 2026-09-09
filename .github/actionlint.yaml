@@ -5,3 +5,6 @@ paths:
   "**/*.yml":
     ignore:
       - 'shellcheck reported issue in this script: SC2016'
+self-hosted-runner:
+  labels:
+    - high-performance

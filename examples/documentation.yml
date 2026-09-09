@@ -1,0 +1,20 @@
+name: Documentation
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', '.github/workflows/documentation.yml']
+  pull_request:
+    paths: ['docs/**', '.github/workflows/documentation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  documentation:
+    name: Build and publish documentation
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: rtCamp/wp-shared-workflows/.github/workflows/documentation.yml@v1
+    with:
+      tooling-ref: v1

@@ -14,11 +14,12 @@ single job starts. Treat the input surface as stable.
   in the same PR; CI fails otherwise.
 - **Repo-local automation is POSIX shell** under `bin/`. Logic that needs a real language belongs in
   [`@rtcamp/wp-tooling`](https://github.com/rtCamp/wp-tooling) and is invoked via `npx wp-tooling`.
+  The action-specific Docusaurus builder is maintained alongside its workflow in `tools/documentation/`.
 - **Third-party actions are pinned to a commit SHA** with a trailing `# vX.Y.Z` comment.
 
 ## Development setup
 
-There is nothing to build. Install the linters once:
+Install the workflow linters once:
 
 ```bash
 brew install actionlint yq jq        # or your platform's equivalent

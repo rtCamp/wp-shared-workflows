@@ -1,0 +1,47 @@
+name: Test documentation builder
+
+on:
+  pull_request:
+    paths:
+      - 'tools/documentation/**'
+      - '.github/workflows/documentation*.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/documentation/**'
+      - '.github/workflows/documentation*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # These tests use Node built-ins only; installing the Docusaurus dependency tree is unnecessary.
+  unit-tests:
+    name: Test documentation tooling
+    runs-on: ["self-hosted"]
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Test builder
+        working-directory: tools/documentation
+        run: npm test
+
+  documentation:
+    name: Build branded documentation fixture
+    permissions:
+      contents: read
+      pages: write # Required by the reusable workflow; deployment is disabled below.
+      id-token: write
+    uses: ./.github/workflows/documentation.yml
+    with:
+      source-directory: tools/documentation/fixture
+      site-config: branding.json
+      tooling-ref: ${{ github.sha }}
+      publish: false
