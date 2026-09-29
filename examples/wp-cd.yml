@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      working-dir: plugins/acme-blocks
+      install-composer-deps: true
+      build-command: npm run build:prod && npm run package
+      upload-artifact: true
+      artifact-name: acme-blocks
+      artifact-path: dist/acme-blocks
+
+  deploy:
+    needs: build
+    permissions:
+      contents: write
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-cd.yml@v1
+    with:
+      tag: ${{ github.ref_name }}
+      artifact-name: acme-blocks
+      deploy-target: github,wporg
+      slug: acme-blocks
+      working-dir: plugins/acme-blocks
+      changelog-path: CHANGELOG.md
+      assets-path: .wordpress-org
+    secrets:
+      WP_ORG_USERNAME: ${{ secrets.WP_ORG_USERNAME }}
+      WP_ORG_PASSWORD: ${{ secrets.WP_ORG_PASSWORD }}

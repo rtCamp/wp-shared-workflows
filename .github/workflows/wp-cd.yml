@@ -12,9 +12,27 @@ on:
         type: string
         required: true
       deploy-target:
-        description: "Comma-separated list of deploy targets to run, no spaces: github, wporg, s3."
+        description: >-
+          Comma-separated list of deploy targets to run, no spaces: github, wporg, s3. Every target
+          downloads the same artifact, so it must meet each listed target's contract: wporg needs
+          readme.txt at its root, s3 exactly one .zip, and github attaches a single archive as-is and
+          packages anything else. wporg and s3 therefore rarely combine in one call.
         type: string
         required: true
+      slug:
+        description: >-
+          Plugin slug. wporg: the plugin's slug on wordpress.org, required when deploy-target
+          includes wporg. github: root directory inside the packaged Release zip; empty falls back
+          to artifact-name.
+        type: string
+        default: ""
+      working-dir:
+        description: >-
+          github, wporg: directory the project lives in, relative to the repo root. A path prefix,
+          not a working directory: it prefixes changelog-path and assets-path only. The deployed
+          files come from the artifact, already scoped by its build.
+        type: string
+        default: "."
       changelog-path:
         description: "github: path to the changelog whose matching section becomes the Release body."
         type: string
@@ -27,10 +45,6 @@ on:
         description: "github: mark the GitHub Release as a prerelease."
         type: boolean
         default: false
-      slug:
-        description: "wporg: plugin slug on wordpress.org. Required when deploy-target includes wporg."
-        type: string
-        default: ""
       assets-path:
         description: "wporg: local directory mapped to SVN /assets/. Skipped if it does not exist."
         type: string
@@ -69,9 +83,10 @@ on:
         description: "s3: AWS secret access key for the above key id. Required when deploy-target includes s3."
         required: false
 
-# No permissions block on purpose: cd-github-release needs contents: write, wporg/s3
-# only read, and a called workflow can only downgrade the caller's grant — so the
-# caller's grant passes through and cd-github-release asserts write itself.
+# No permissions block: a called workflow can only downgrade the caller's grant. The calling
+# job must grant contents: write on every call, even when github is not listed — GitHub checks
+# each nested job's permissions (cd-github-release asks for write) against that grant before
+# it evaluates if:, so a read-only caller is rejected at startup.
 
 jobs:
   # Fail fast before any target starts — a typo'd target would otherwise silently
@@ -104,6 +119,11 @@ jobs:
           # Whitespace would break the jobs' comma-bounded matching and silently disable a target.
           if [[ "$DEPLOY_TARGET" == *[[:space:]]* ]]; then
             echo "::error::deploy-target must be comma-separated without spaces (got '$DEPLOY_TARGET')"
+            exit 1
+          fi
+          # read -a drops a trailing empty field, so the loop below never sees the one in 'github,'.
+          if [[ "$DEPLOY_TARGET" == *, ]]; then
+            echo "::error::deploy-target contains an empty entry (got '$DEPLOY_TARGET')"
             exit 1
           fi
           IFS=',' read -ra targets <<< "$DEPLOY_TARGET"
@@ -140,6 +160,8 @@ jobs:
     with:
       tag: ${{ inputs.tag }}
       artifact-name: ${{ inputs.artifact-name }}
+      slug: ${{ inputs.slug }}
+      working-dir: ${{ inputs.working-dir }}
       changelog-path: ${{ inputs.changelog-path }}
       draft: ${{ inputs.draft }}
       prerelease: ${{ inputs.prerelease }}
@@ -153,6 +175,7 @@ jobs:
       slug: ${{ inputs.slug }}
       tag: ${{ inputs.tag }}
       artifact-name: ${{ inputs.artifact-name }}
+      working-dir: ${{ inputs.working-dir }}
       assets-path: ${{ inputs.assets-path }}
       dry-run: ${{ inputs.dry-run }}
     secrets:

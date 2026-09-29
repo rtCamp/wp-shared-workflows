@@ -11,6 +11,7 @@ Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML 
 - `.github/workflows/ci-*.yml` — CI leaves: `detect-changes`, `lint-{css,js,php}`, `test-{js,php,a11y}`, `build`, `build-artifact-gate`, `test-build-artifact`
 - `.github/workflows/wp-ci.yml` — CI orchestrator; composes the leaves and routes by `project-type`
 - `.github/workflows/cd-*.yml` — opt-in deploy leaves: `github-release`, `wp-org`, `s3`, `built-branch`
+- `.github/workflows/wp-cd.yml` — optional CD orchestrator; fans out to `github-release`, `wp-org` and `s3` by `deploy-target`
 - `.github/workflows/version-monitor.yml` — monthly version-bump check that opens a draft PR
 - `.github/workflows/ci-self-check.yml` — this repo's own CI; the only workflow not `on: workflow_call`
 - `examples/<name>.yml` — exactly one caller example per workflow, matched by filename
@@ -93,7 +94,7 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 ## Architectural decisions
 
 - **A tagged workflow is public API**: inputs, secrets and outputs are consumed by every rtCamp repo pinned at `@v1`. A renamed input breaks them at workflow-validation time, before a single job starts. Additive changes only within a major; removals, renames and newly-required inputs ship as a new major.
-- **Orchestrator plus leaves**: `wp-ci.yml` composes the CI leaves via `jobs.<id>.uses`, so a consumer wires up one job instead of ten. The `cd-*` workflows have no orchestrator by design — a consumer calls the ones it needs from its own release trigger, and each stays independently useful.
+- **Orchestrator plus leaves**: `wp-ci.yml` composes the CI leaves via `jobs.<id>.uses`, so a consumer wires up one job instead of ten. `wp-cd.yml` is the optional CD counterpart: one call fans out to `cd-github-release`, `cd-wp-org` and `cd-s3` from a single `deploy-target`, but every `cd-*` leaf stays independently callable from a consumer's own release trigger. `cd-built-branch.yml` builds its own output instead of consuming an artifact, so it is standalone only.
 - **One unit per call**: `project-type` describes the unit at `working-dir`, not the repository. A repo with two plugins and a theme calls `wp-ci.yml` three times, usually via a matrix in the caller. Sibling calls don't cancel each other, and each derives its own artifact name.
 - **Everything gated on what changed**: `ci-detect-changes.yml` buckets the diff and every downstream job keys off it, so a docs-only PR runs almost nothing.
 - **Logic that needs a real language lives elsewhere**: `@rtcamp/wp-tooling`, invoked as `npx wp-tooling <command>`. Repo-local automation is Bash under `bin/`.
@@ -102,7 +103,7 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 
 ## Common pitfalls
 
-- `working-dir` carries three different meanings. On the CI leaves it is a real working directory — tools install and run inside it. On `ci-detect-changes.yml` it is a **path scope**: the diff is always taken from the repository root, then the CSS/JS/PHP lists are filtered and re-rooted, while `total-count`, `ignored-count` and the `gha-*` outputs stay repo-wide. On `cd-github-release.yml` and `cd-wp-org.yml` it is a **path prefix** for source files they read (`changelog-path`, `assets-path`); the deployed files come from the artifact. `cd-built-branch.yml` scopes per entry in its `targets` JSON array, and `cd-s3.yml` by the artifact it downloads.
+- `working-dir` carries three different meanings. On the CI leaves it is a real working directory — tools install and run inside it. On `ci-detect-changes.yml` it is a **path scope**: the diff is always taken from the repository root, then the CSS/JS/PHP lists are filtered and re-rooted, while `total-count`, `ignored-count` and the `gha-*` outputs stay repo-wide. On `cd-github-release.yml` and `cd-wp-org.yml` it is a **path prefix** for source files they read (`changelog-path`, `assets-path`); the deployed files come from the artifact, and `wp-cd.yml` forwards it to both unchanged. `cd-built-branch.yml` scopes per entry in its `targets` JSON array, and `cd-s3.yml` by the artifact it downloads.
 - `actions/download-artifact` only sees the current run. Anything consuming a build artifact must run in the same workflow as the `ci-build` job that produced it, wired with `needs:`.
 - The default `wp-tooling-ref` SHA is duplicated in `ci-detect-changes.yml`, `wp-ci.yml` and `version-monitor.yml`. Changing one without the others silently splits behaviour across jobs.
 - `actionlint` shells out to whatever `shellcheck` is on `PATH`, and rule behaviour differs between shellcheck releases — a local pass does not guarantee a CI pass. Write shell that is clean on older versions too: prefer `guard || continue` and explicit `if` blocks over `A && B || C`, which SC2015 flags on shellcheck 0.10 and earlier.

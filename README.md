@@ -44,10 +44,12 @@ you can copy as-is.
 
 ### CD
 
-Each is opt-in — call the ones you need from your own release trigger.
+Each is opt-in — call the ones you need from your own release trigger, or fan out to several from
+one `wp-cd.yml` call.
 
 | Workflow | What it does | Example |
 |---|---|---|
+| [`wp-cd.yml`](.github/workflows/wp-cd.yml) | CD orchestrator. One call fans out to `github`, `wporg` and `s3` from `deploy-target` | [example](examples/wp-cd.yml) |
 | [`cd-github-release.yml`](.github/workflows/cd-github-release.yml) | GitHub Release from a tag + artifact, notes from `CHANGELOG.md` | [example](examples/cd-github-release.yml) |
 | [`cd-wp-org.yml`](.github/workflows/cd-wp-org.yml) | WordPress.org SVN deploy | [example](examples/cd-wp-org.yml) |
 | [`cd-s3.yml`](.github/workflows/cd-s3.yml) | S3 upload + optional CloudFront invalidation | [example](examples/cd-s3.yml) |
