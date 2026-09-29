@@ -8,7 +8,10 @@ on:
         type: string
         default: "22"
       test-command:
-        description: "Shell command that runs Jest."
+        description: >-
+          Shell command that runs Jest. When enable-cache is true, --cacheDirectory=<path> is
+          appended as "$@", so a custom command must forward its arguments through to Jest — the
+          default does, via npm's `--` separator.
         type: string
         default: "npm run test:js -- --ci"
       enable-cache:
@@ -52,12 +55,24 @@ jobs:
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
         with:
           path: ${{ steps.jest-cache.outputs.dir }}
-          key: jest-${{ runner.os }}
+          # Keyed on the lockfile: a bare 'jest-<os>' key is written once and never updated again,
+          # so the cache would freeze at whatever the first run happened to produce.
+          key: jest-${{ runner.os }}-${{ hashFiles(format('{0}/package-lock.json', inputs.working-dir)) }}
+          restore-keys: |
+            jest-${{ runner.os }}-
 
       - name: Install npm dependencies
         run: npm ci
 
       - name: Run Jest
-        run: ${{ inputs.test-command }}
+        shell: bash
         env:
-          JEST_CACHE_DIRECTORY: ${{ steps.jest-cache.outputs.dir }}
+          TEST_COMMAND: ${{ inputs.test-command }}
+          # Jest reads cacheDirectory from its config or --cacheDirectory only; there is no
+          # environment variable for it, so the flag has to be appended to the command.
+          JEST_CACHE_DIR: ${{ steps.jest-cache.outputs.dir }}
+        run: |
+          set -eo pipefail
+          args=()
+          [ -z "$JEST_CACHE_DIR" ] || args+=("--cacheDirectory=$JEST_CACHE_DIR")
+          bash -eo pipefail -c "$TEST_COMMAND \"\$@\"" _ "${args[@]}"

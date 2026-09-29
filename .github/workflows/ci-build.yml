@@ -81,14 +81,23 @@ jobs:
 
       - name: Install Composer dependencies
         if: ${{ inputs.install-composer-deps }}
-        run: composer install ${{ inputs.composer-flags }}
+        shell: bash
+        env:
+          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+        run: |
+          set -euo pipefail
+          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
+          composer install "${composer_args[@]}"
 
       - name: Install npm dependencies
         if: ${{ inputs.install-node-deps }}
         run: npm ci
 
       - name: Build production assets
-        run: ${{ inputs.build-command != '' && inputs.build-command || (inputs.install-node-deps && 'npm run build:prod' || 'composer run-script build') }}
+        shell: bash
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command != '' && inputs.build-command || (inputs.install-node-deps && 'npm run build:prod' || 'composer run-script build') }}
+        run: bash -eo pipefail -c "$BUILD_COMMAND"
 
       - name: Upload build artifact
         if: ${{ inputs.upload-artifact }}

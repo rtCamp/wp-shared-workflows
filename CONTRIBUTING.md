@@ -12,7 +12,7 @@ single job starts. Treat the input surface as stable.
   repo layout, the shape every workflow follows, and the coding standards CI enforces.
 - **Every workflow has exactly one caller example** at `examples/<same-name>.yml`. Add or update it
   in the same PR; CI fails otherwise.
-- **Repo-local automation is POSIX shell** under `bin/`. Logic that needs a real language belongs in
+- **Repo-local automation is Bash** under `bin/`. Logic that needs a real language belongs in
   [`@rtcamp/wp-tooling`](https://github.com/rtCamp/wp-tooling) and is invoked via `npx wp-tooling`.
 - **Third-party actions are pinned to a commit SHA** with a trailing `# vX.Y.Z` comment.
 

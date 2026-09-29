@@ -73,7 +73,13 @@ jobs:
           cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
 
       - name: Install Composer dependencies
-        run: composer install ${{ inputs.composer-flags }}
+        shell: bash
+        env:
+          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+        run: |
+          set -euo pipefail
+          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
+          composer install "${composer_args[@]}"
 
       - name: Install npm dependencies
         if: ${{ inputs.use-wp-env }}
@@ -84,7 +90,10 @@ jobs:
         run: npm run wp-env start
 
       - name: Run PHPUnit
-        run: ${{ inputs.test-command != '' && inputs.test-command || (inputs.use-wp-env && 'npm run test:php' || 'vendor/bin/phpunit') }}
+        shell: bash
+        env:
+          TEST_COMMAND: ${{ inputs.test-command != '' && inputs.test-command || (inputs.use-wp-env && 'npm run test:php' || 'vendor/bin/phpunit') }}
+        run: bash -eo pipefail -c "$TEST_COMMAND"
 
       - name: Stop wp-env
         if: ${{ inputs.use-wp-env && always() }}

@@ -57,9 +57,10 @@ jobs:
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed-files }}
+          LINT_COMMAND: ${{ inputs.lint-command }}
         run: |
           if [ -n "$CHANGED_FILES" ]; then
             printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx --no-install eslint --
           else
-            ${{ inputs.lint-command }}
+            bash -eo pipefail -c "$LINT_COMMAND"
           fi

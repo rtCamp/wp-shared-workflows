@@ -46,13 +46,19 @@ jobs:
         run: npm ci
 
       - name: Build production assets
-        run: ${{ inputs.build-command }}
+        shell: bash
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -eo pipefail -c "$BUILD_COMMAND"
 
       - name: Start wp-env
         run: npm run wp-env start
 
       - name: Run pa11y-ci
-        run: ${{ inputs.test-command }}
+        shell: bash
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: bash -eo pipefail -c "$TEST_COMMAND"
 
       - name: Stop wp-env
         if: always()

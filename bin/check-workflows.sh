@@ -5,7 +5,8 @@
 #   2. Every `uses:` in an example resolves to a workflow in this repo, pinned at @v1.
 #   3. Every `with:` / `secrets:` key an example passes is actually declared by that
 #      workflow, and every required input/secret is supplied.
-#   4. Repo conventions: kebab-case input names, every input documented, every step named.
+#   4. Repo conventions: kebab-case input names, every input documented, every step named,
+#      and no caller value interpolated into a `run:` body.
 #
 # Requires: yq (v4) and jq. Both are preinstalled on GitHub's ubuntu runners;
 # locally, `brew install yq jq`.
@@ -148,6 +149,17 @@ for wf in "$WORKFLOW_DIR"/*.yml; do
     | ($j.value.steps // []) | to_entries[]
     | select((.value.name // "") == "")
     | "job \($j.key) step #\(.key)"' <<<"$wf_json")
+
+  # A caller value spliced into a run: body at render time can break the script around it — a
+  # newline injects extra shell lines, a quote corrupts the next command. Inspects .run only, so
+  # env:, with: and if: expressions stay legal. See "Code quality" in AGENTS.md.
+  while IFS= read -r loc; do
+    [ -n "$loc" ] || continue
+    err "$base interpolates a caller value into a run: body at $loc — pass it via step env:"
+  done < <(jq -r '(.jobs // {}) | to_entries[] as $j
+    | ($j.value.steps // []) | to_entries[]
+    | select((.value.run // "") | test("\\$\\{\\{\\s*(inputs|matrix)\\."))
+    | "job \($j.key) step #\(.key) (\(.value.name // "unnamed"))"' <<<"$wf_json")
 done
 
 if [ "$fail" -ne 0 ]; then

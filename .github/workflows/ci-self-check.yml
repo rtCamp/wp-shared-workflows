@@ -29,7 +29,7 @@ jobs:
         run: pipx install yamllint
 
       - name: Run yamllint
-        run: yamllint -c .yamllint.yml .github/workflows/ examples/
+        run: yamllint -c .yamllint.yml .
 
       - name: Install actionlint
         run: |

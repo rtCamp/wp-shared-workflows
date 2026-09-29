@@ -4,7 +4,7 @@
 brew install actionlint yq jq                                        # the only tooling this repo needs
 ```
 
-Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML or POSIX shell.
+Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML or Bash.
 
 ### Key Directories
 
@@ -55,13 +55,39 @@ jobs:
 
 - 2-space indent, `kebab-case` input names, a `description:` on every input, a `name:` on every job and step. `bin/check-workflows.sh` enforces all four.
 - Third-party actions pinned to a commit SHA with a trailing `# vX.Y.Z` comment.
-- User-controlled values reach a `run:` body through step `env:`, never through `${{ }}` interpolation:
+- Caller values reach a `run:` body through step `env:`, never through `${{ }}` interpolation. `bin/check-workflows.sh` enforces this — interpolation is still fine in `env:`, `with:` and `if:`, which are not shell. Two shapes:
+
+**Value inputs** (`composer-flags`, `phpstan-level`, `changed-files`) become argv, so shell metacharacters stay literal:
 
 ```yaml
-      - name: Resolve targets
+      - name: Install Composer dependencies
+        shell: bash
         env:
-          INPUT_TARGETS: ${{ inputs.targets }}
-        run: jq -e 'type == "array"' <<<"$INPUT_TARGETS"
+          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+        run: |
+          set -euo pipefail
+          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
+          composer install "${composer_args[@]}"
+```
+
+**Command inputs** (`build-command`, `test-command`, `*-command`) *are* shell — running them is the contract, not a leak. Routing them through `env:` stops render-time splicing, where a newline in the value injects extra lines into the generated script and a quote corrupts the command after it:
+
+```yaml
+      - name: Build production assets
+        shell: bash
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -eo pipefail -c "$BUILD_COMMAND"
+```
+
+Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a bare `bash -c "false; echo x"` exits **0** and a failing build passes green. Those flags reproduce GitHub's own `shell: bash` default. `-u` is deliberately omitted — GitHub does not set it either, and it would break consumer commands that reference unset variables. Append arguments as quoted positionals so they cannot be re-parsed as shell:
+
+```yaml
+        run: |
+          set -eo pipefail
+          args=()
+          [ -z "$PHPSTAN_LEVEL" ] || args+=("--level=$PHPSTAN_LEVEL")
+          bash -eo pipefail -c "$PHPSTAN_COMMAND \"\$@\"" _ "${args[@]}"
 ```
 
 ## Architectural decisions
@@ -70,7 +96,7 @@ jobs:
 - **Orchestrator plus leaves**: `wp-ci.yml` composes the CI leaves via `jobs.<id>.uses`, so a consumer wires up one job instead of ten. The `cd-*` workflows have no orchestrator by design — a consumer calls the ones it needs from its own release trigger, and each stays independently useful.
 - **One unit per call**: `project-type` describes the unit at `working-dir`, not the repository. A repo with two plugins and a theme calls `wp-ci.yml` three times, usually via a matrix in the caller. Sibling calls don't cancel each other, and each derives its own artifact name.
 - **Everything gated on what changed**: `ci-detect-changes.yml` buckets the diff and every downstream job keys off it, so a docs-only PR runs almost nothing.
-- **Logic that needs a real language lives elsewhere**: `@rtcamp/wp-tooling`, invoked as `npx wp-tooling <command>`. Repo-local automation is POSIX shell under `bin/`.
+- **Logic that needs a real language lives elsewhere**: `@rtcamp/wp-tooling`, invoked as `npx wp-tooling <command>`. Repo-local automation is Bash under `bin/`.
 - **Examples are executable documentation**: one per workflow, verified in CI, comment-free, pinned `@v1`. They target a `wp-content`-shaped monorepo because that is the shape people get wrong. Anything consuming a build artifact shows the producing `ci-build` job and the `needs:` edge in the same file.
 - **Prefer official tooling**: `actions/checkout`, `actions/setup-node`, `shivammathur/setup-php`, and WordPress/Automattic-maintained actions over third-party ones.
 

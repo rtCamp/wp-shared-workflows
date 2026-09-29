@@ -90,10 +90,12 @@ on:
         required: false
     outputs:
       published:
-        description: "'true' when a commit was pushed to the target branch, 'false' on a dry run."
+        description: >-
+          'true' when this run pushed a commit to the target branch; 'false' on a dry run, or when a
+          newer run already published a descendant and this one stood down.
         value: ${{ jobs.publish.outputs.published }}
       published-sha:
-        description: "SHA of the commit created on the target branch. Empty on a dry run."
+        description: "SHA this run pushed to the target branch. Empty whenever no push happened."
         value: ${{ jobs.publish.outputs.published-sha }}
       source-sha:
         description: "Resolved source commit that was built. This is the published commit's parent."
@@ -333,7 +335,13 @@ jobs:
 
       - name: Install Composer dependencies
         if: ${{ matrix.composer == 'true' }}
-        run: composer install ${{ matrix.composer-flags }}
+        shell: bash
+        env:
+          COMPOSER_FLAGS: ${{ matrix.composer-flags }}
+        run: |
+          set -euo pipefail
+          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
+          composer install "${composer_args[@]}"
 
       - name: Install npm dependencies
         if: ${{ matrix.node == 'true' }}
@@ -341,7 +349,10 @@ jobs:
 
       - name: Build production assets
         if: ${{ matrix.node == 'true' }}
-        run: ${{ matrix.build-command }}
+        shell: bash
+        env:
+          BUILD_COMMAND: ${{ matrix.build-command }}
+        run: bash -eo pipefail -c "$BUILD_COMMAND"
 
       - name: Verify build output
         working-directory: ${{ github.workspace }}
@@ -511,6 +522,7 @@ jobs:
                 {
                   echo "published=false"
                   echo "published-sha="
+                  echo "superseded=true"
                 } >> "$GITHUB_OUTPUT"
                 exit 0
               else
@@ -615,6 +627,7 @@ jobs:
           PUBLISH_PATHS: ${{ needs.discover.outputs.publish-paths }}
           PUBLISHED: ${{ steps.publish.outputs.published }}
           PUBLISHED_SHA: ${{ steps.publish.outputs.published-sha }}
+          SUPERSEDED: ${{ steps.publish.outputs.superseded }}
           DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
@@ -623,6 +636,9 @@ jobs:
             echo
             if [ "${PUBLISHED:-}" = "true" ]; then
               echo "Force-pushed \`${TARGET_BRANCH}\` at \`${PUBLISHED_SHA}\`."
+            elif [ "${SUPERSEDED:-}" = "true" ]; then
+              echo "**Superseded** — a newer run already published a descendant of this run's" \
+                "source commit, so \`${TARGET_BRANCH}\` is already ahead. Nothing was pushed."
             elif [ "$DRY_RUN" = "true" ]; then
               echo "**Dry run** — the commit was created but not pushed."
             else
