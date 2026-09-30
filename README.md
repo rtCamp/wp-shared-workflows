@@ -20,6 +20,9 @@ jobs:
 That is a complete CI setup: lint CSS/JS/PHP, Jest, PHPUnit, and build — each job gated on what
 actually changed, so a docs-only PR runs almost nothing.
 
+Every job runs on rtCamp's self-hosted runners (`runs-on: [self-hosted]`). A reusable workflow's
+jobs run in the calling repository, so it needs access to the org's self-hosted runner group.
+
 ## Workflows
 
 Each workflow declares its inputs, secrets and outputs in its own `workflow_call` block, and GitHub

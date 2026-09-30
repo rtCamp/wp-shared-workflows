@@ -121,9 +121,24 @@ jobs:
             args+=(--ignore "$IGNORE_PATHS")
           fi
           if [ -n "$BASE_REF" ]; then
-            args+=(--base "$BASE_REF")
+            # The CLI does not fetch an explicit --base, and the shallow checkout rarely has it.
+            if ! base="$(git rev-parse --verify -q "${BASE_REF}^{commit}")"; then
+              git fetch --no-tags --depth=1 origin "${BASE_REF#origin/}" ||
+                { echo "::error::base-ref '$BASE_REF' could not be fetched from origin"; exit 1; }
+              base="$(git rev-parse FETCH_HEAD)"
+            fi
+            args+=(--base "$base")
           fi
-          wp-tooling detect-changes "${args[@]}"
+          # The CLI reports zero changes when git diff fails; fail instead of skipping every job.
+          err="$RUNNER_TEMP/detect-changes.stderr"
+          status=0
+          wp-tooling detect-changes "${args[@]}" 2>"$err" || status=$?
+          cat "$err" >&2
+          if grep -q 'git diff failed' "$err"; then
+            echo "::error::detect-changes could not diff against its base, so it cannot tell what changed. Failing instead of skipping every job."
+            exit 1
+          fi
+          exit "$status"
 
       # The detector emits repo-root-relative paths but the linters run with cwd = working-dir,
       # so an unscoped list resolves to <dir>/<dir>/<file>. At working-dir '.' this is a pure

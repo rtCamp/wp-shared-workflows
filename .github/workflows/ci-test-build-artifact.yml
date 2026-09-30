@@ -125,7 +125,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          npx --yes @wordpress/env run cli wp package install wp-cli/doctor-command:@stable
+          # 3.x requires WP-CLI 3; wp-env ships 2.12.
+          npx --yes @wordpress/env run cli wp package install wp-cli/doctor-command:2.3.1
 
           # `wp doctor check` exits 1 on an error check; capture anyway (|| true) so the report prints before we gate.
           result=$(npx --yes @wordpress/env run cli wp doctor check --all --format=json) || true

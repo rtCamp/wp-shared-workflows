@@ -4,7 +4,7 @@ All notable changes to `@rtcamp/wp-shared-workflows` are documented in this file
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## v1.0.0 - 2026-08-10
+## v1.0.0 - 2026-09-30
 
 First tagged release. Consumers pin `@v1`.
 
@@ -24,6 +24,9 @@ First tagged release. Consumers pin `@v1`.
 - Monorepo fixes across the CI leaves. All six `setup-node` steps that use `cache: npm` now pass `cache-dependency-path`, and `ci-lint-php.yml`'s Composer cache key is scoped to `<working-dir>/composer.lock`. `ci-build-artifact-gate.yml` normalises **and** regex-escapes `working-dir` before anchoring its pattern — previously a `./`-prefixed or metacharacter-containing value matched nothing, so the gate passed green on a PR that committed build output. `ci-test-build-artifact.yml` gains `working-dir`.
 - `cd-github-release.yml` and `cd-wp-org.yml` gain `working-dir` as a **path prefix, not a working directory**: it scopes only the source-tree paths they read (`changelog-path`, `assets-path`), since the deployed files come from an already unit-scoped artifact. Both previously fell back to the repo root in a monorepo and failed silently — another unit's `CHANGELOG.md` still parses, and a missing `.wordpress-org` only emits a notice. Both now reject absolute and `..` paths. `cd-s3.yml` is unchanged.
 - `cd-github-release.yml`, `cd-wp-org.yml` and `cd-s3.yml` fail fast in a first validation step when a required input arrives empty: `tag` and `artifact-name` everywhere, plus `slug` for wporg and `bucket` for s3. `required: true` does not reject an empty string, and an empty `artifact-name` makes `download-artifact` fetch every artifact in the run; an empty `slug` would fall back to the deploy action's repo-name default and could deploy to the wrong wordpress.org plugin, and an empty `tag` would upload to `<prefix>.zip`. `cd-wp-org.yml` and `cd-s3.yml` also presence-check their secrets as booleans, since a caller mapping an unset secret satisfies GitHub's required-secret check with an empty value.
+- Every job runs on `runs-on: [self-hosted]`, per rtCamp's policy for private repositories. A reusable workflow's jobs run in the calling repository, so the caller needs access to the org's self-hosted runner group. `bin/check-workflows.sh` applies the same label allow-list as the org's runner-policy scanner, which stops checking a repository once it is public. These runners do not ship the AWS CLI, so `cd-s3.yml` installs a pinned, checksum-verified one when the runner has none.
+- `ci-detect-changes.yml`, and so `wp-ci.yml`, now fetch an explicit `base-ref` before diffing. The CLI diffs an explicit base as-is, and the depth-2 checkout never holds a branch such as `main`, so the diff failed, the CLI reported zero changes, and every downstream job skipped while the run passed green. The step also fails when the CLI reports a failed diff in any mode, instead of passing with nothing checked.
+- `ci-test-build-artifact.yml` pins `wp-cli/doctor-command` to 2.3.1. `@stable` resolved to v3.0.0 (released 2026-08-04), which requires wp-cli ^3.0, while the wp-env cli container ships 2.12, so the job failed at the package install for every caller.
 
 ### Added
 

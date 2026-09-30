@@ -93,7 +93,7 @@ jobs:
   # deploy nothing, and a missing input/secret would fail mid-deploy.
   validate-inputs:
     name: Validate inputs
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     steps:
       - name: Check deploy targets and their required inputs and secrets
         env:

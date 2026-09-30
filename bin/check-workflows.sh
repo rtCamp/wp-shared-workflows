@@ -6,10 +6,9 @@
 #   3. Every `with:` / `secrets:` key an example passes is actually declared by that
 #      workflow, and every required input/secret is supplied.
 #   4. Repo conventions: kebab-case input names, every input documented, every step named,
-#      and no caller value interpolated into a `run:` body.
+#      no caller value interpolated into a `run:` body, and only allowed runner labels.
 #
-# Requires: python3 (with PyYAML) and jq. Both are preinstalled on GitHub's
-# ubuntu runners; locally, `brew install jq` and `pip install pyyaml`.
+# Requires: yq (v4) and jq. Locally, `brew install yq jq`.
 # Run from anywhere: bin/check-workflows.sh
 
 set -euo pipefail
@@ -22,6 +21,7 @@ EXAMPLE_DIR="examples"
 SELF_CHECK="ci-self-check.yml"
 EXPECTED_REF="v1"
 USES_PREFIX="rtCamp/wp-shared-workflows/.github/workflows"
+ALLOWED_RUNNER_LABELS=(self-hosted high-performance macOS self-hosted-arm64)
 
 fail=0
 
@@ -30,19 +30,14 @@ err() {
   fail=1
 }
 
-for tool in python3 jq; do
+for tool in yq jq; do
   command -v "$tool" >/dev/null 2>&1 || {
-    echo "$tool is required but not installed" >&2
+    echo "$tool is required but not installed — brew install yq jq" >&2
     exit 127
   }
 done
 
-as_json() { python3 -c "
-import yaml,json,sys
-class StrLoader(yaml.SafeLoader):pass
-StrLoader.add_constructor('tag:yaml.org,2002:bool',lambda l,n:l.construct_scalar(n))
-json.dump(yaml.load(open(sys.argv[1]),Loader=StrLoader),sys.stdout)
-" "$1"; }
+as_json() { yq -o=json '.' "$1"; }
 
 # --- 1. one example per workflow, one workflow per example -------------------
 
@@ -165,6 +160,18 @@ for wf in "$WORKFLOW_DIR"/*.yml; do
     | ($j.value.steps // []) | to_entries[]
     | select((.value.run // "") | test("\\$\\{\\{\\s*(inputs|matrix)\\."))
     | "job \($j.key) step #\(.key) (\(.value.name // "unnamed"))"' <<<"$wf_json")
+
+  # Every runs-on label must be on the org runner-policy allow-list.
+  while IFS= read -r loc; do
+    [ -n "$loc" ] || continue
+    err "$base $loc — allowed: ${ALLOWED_RUNNER_LABELS[*]}; use runs-on: [self-hosted]"
+  done < <(jq -r --args '$ARGS.positional as $allowed | (.jobs // {}) | to_entries[]
+    | select(.value["runs-on"] != null)
+    | (.value["runs-on"] | if type == "object" then (.labels // []) else . end | [.] | flatten
+        | map(tostring) | map(select(. as $l | $allowed | index($l) | not))) as $bad
+    | select($bad | length > 0)
+    | "job \(.key) runs on disallowed label(s) \($bad | join(", "))"' \
+    "${ALLOWED_RUNNER_LABELS[@]}" <<<"$wf_json")
 done
 
 if [ "$fail" -ne 0 ]; then
