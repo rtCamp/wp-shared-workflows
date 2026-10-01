@@ -3,6 +3,10 @@ name: CI / Test PHP
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       php-version:
         description: "PHP version. Installed on the host (used directly in standalone mode) and passed to wp-env as WP_ENV_PHP_VERSION so the container runs the same version."
         type: string
@@ -40,7 +44,7 @@ permissions:
 jobs:
   test-php:
     name: PHPUnit
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     # Pin the wp-env container's PHP/WordPress core via env: (not $GITHUB_ENV, which is
     # newline-injectable) at job scope, so start/run/stop resolve the same environment.
     # An empty WP_ENV_CORE is ignored by wp-env (falls back to the consumer's .wp-env.json).

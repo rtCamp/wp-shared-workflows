@@ -3,6 +3,10 @@ name: CI / Lint PHP
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       php-version:
         description: "PHP version."
         type: string
@@ -46,7 +50,7 @@ permissions:
 jobs:
   lint-php:
     name: Lint PHP
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     defaults:
       run:
         working-directory: ${{ inputs.working-dir }}

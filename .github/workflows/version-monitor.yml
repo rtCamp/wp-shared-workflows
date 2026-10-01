@@ -3,6 +3,10 @@ name: Version Monitor
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       node-version:
         description: "Node.js version used to install and run wp-tooling"
         type: string
@@ -35,7 +39,7 @@ concurrency:
 jobs:
   version-monitor:
     name: Check for version bumps
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 20
     permissions:
       contents: write

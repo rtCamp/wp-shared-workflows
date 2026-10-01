@@ -6,7 +6,8 @@
 #   3. Every `with:` / `secrets:` key an example passes is actually declared by that
 #      workflow, and every required input/secret is supplied.
 #   4. Repo conventions: kebab-case input names, every input documented, every step named,
-#      no caller value interpolated into a `run:` body, and only allowed runner labels.
+#      no caller value interpolated into a `run:` body, reusable workflows take their runner
+#      from the runs-on input, and this repo's own CI runs on an allowed label.
 #
 # Requires: yq (v4) and jq. Locally, `brew install yq jq`.
 # Run from anywhere: bin/check-workflows.sh
@@ -21,7 +22,11 @@ EXAMPLE_DIR="examples"
 SELF_CHECK="ci-self-check.yml"
 EXPECTED_REF="v1"
 USES_PREFIX="rtCamp/wp-shared-workflows/.github/workflows"
-ALLOWED_RUNNER_LABELS=(self-hosted high-performance macOS self-hosted-arm64)
+# Reusable workflows run in the caller's repo, so the caller picks the runner.
+RUNS_ON_EXPR='${{ fromJSON(inputs.runs-on) }}'
+RUNS_ON_FORWARD='${{ inputs.runs-on }}'
+# This repo is public, so its own CI runs on GitHub-hosted runners.
+OWN_CI_RUNNER_LABELS=(ubuntu-latest)
 
 fail=0
 
@@ -161,17 +166,37 @@ for wf in "$WORKFLOW_DIR"/*.yml; do
     | select((.value.run // "") | test("\\$\\{\\{\\s*(inputs|matrix)\\."))
     | "job \($j.key) step #\(.key) (\(.value.name // "unnamed"))"' <<<"$wf_json")
 
-  # Every runs-on label must be on the org runner-policy allow-list.
-  while IFS= read -r loc; do
-    [ -n "$loc" ] || continue
-    err "$base $loc — allowed: ${ALLOWED_RUNNER_LABELS[*]}; use runs-on: [self-hosted]"
-  done < <(jq -r --args '$ARGS.positional as $allowed | (.jobs // {}) | to_entries[]
-    | select(.value["runs-on"] != null)
-    | (.value["runs-on"] | if type == "object" then (.labels // []) else . end | [.] | flatten
-        | map(tostring) | map(select(. as $l | $allowed | index($l) | not))) as $bad
-    | select($bad | length > 0)
-    | "job \(.key) runs on disallowed label(s) \($bad | join(", "))"' \
-    "${ALLOWED_RUNNER_LABELS[@]}" <<<"$wf_json")
+  # A public caller cannot use rtCamp's self-hosted runners, and rtCamp's private repos must
+  # (org policy), so no reusable workflow hard-codes a label: every job runs on the runs-on
+  # input, and the orchestrators forward it to every leaf.
+  if jq -e '.["on"] | type == "object" and has("workflow_call")' >/dev/null <<<"$wf_json"; then
+    jq -e '.["on"].workflow_call.inputs["runs-on"] != null' >/dev/null <<<"$wf_json" ||
+      err "$base declares no runs-on input"
+    while IFS= read -r loc; do
+      [ -n "$loc" ] || continue
+      err "$base $loc — use runs-on: $RUNS_ON_EXPR"
+    done < <(jq -r --arg expr "$RUNS_ON_EXPR" '(.jobs // {}) | to_entries[]
+      | select(.value["runs-on"] != null and .value["runs-on"] != $expr)
+      | "job \(.key) runs on \(.value["runs-on"] | tostring)"' <<<"$wf_json")
+    while IFS= read -r loc; do
+      [ -n "$loc" ] || continue
+      err "$base $loc — pass runs-on: $RUNS_ON_FORWARD"
+    done < <(jq -r --arg fwd "$RUNS_ON_FORWARD" '(.jobs // {}) | to_entries[]
+      | select((.value.uses // "") | startswith("./.github/workflows/"))
+      | select((.value.with // {})["runs-on"] != $fwd)
+      | "job \(.key) does not forward runs-on to \(.value.uses)"' <<<"$wf_json")
+  else
+    while IFS= read -r loc; do
+      [ -n "$loc" ] || continue
+      err "$base $loc — allowed: ${OWN_CI_RUNNER_LABELS[*]}"
+    done < <(jq -r --args '$ARGS.positional as $allowed | (.jobs // {}) | to_entries[]
+      | select(.value["runs-on"] != null)
+      | (.value["runs-on"] | if type == "object" then (.labels // []) else . end | [.] | flatten
+          | map(tostring) | map(select(. as $l | $allowed | index($l) | not))) as $bad
+      | select($bad | length > 0)
+      | "job \(.key) runs on disallowed label(s) \($bad | join(", "))"' \
+      "${OWN_CI_RUNNER_LABELS[@]}" <<<"$wf_json")
+  fi
 done
 
 if [ "$fail" -ne 0 ]; then

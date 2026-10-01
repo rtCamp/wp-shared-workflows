@@ -20,8 +20,17 @@ jobs:
 That is a complete CI setup: lint CSS/JS/PHP, Jest, PHPUnit, and build — each job gated on what
 actually changed, so a docs-only PR runs almost nothing.
 
-Every job runs on rtCamp's self-hosted runners (`runs-on: [self-hosted]`). A reusable workflow's
-jobs run in the calling repository, so it needs access to the org's self-hosted runner group.
+Every job runs on the runner the caller picks with the `runs-on` input, as JSON. It defaults to
+GitHub-hosted `"ubuntu-latest"`. A reusable workflow's jobs run in the calling repository, so a public
+repository cannot use rtCamp's self-hosted runners, while rtCamp's private repositories must (org
+runner policy) and pass:
+
+```yaml
+    with:
+      runs-on: '["self-hosted"]'
+```
+
+`wp-ci.yml` and `wp-cd.yml` forward it to every workflow they call.
 
 ## Workflows
 

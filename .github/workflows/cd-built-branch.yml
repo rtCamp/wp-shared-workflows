@@ -11,6 +11,10 @@ name: CD / Built Branch
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       targets:
         description: >-
           JSON array of build target objects. Each needs "dir" (repo-relative; "." for a flat repo)
@@ -110,7 +114,7 @@ on:
 jobs:
   discover:
     name: Resolve build targets
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     permissions:
       contents: read
     outputs:
@@ -292,7 +296,7 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     needs: [discover]
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 30
     # Read-only on purpose: this job runs third-party dependency code, so it must never hold a
     # writable token. Only publish does, and it runs no dependency code.
@@ -416,7 +420,7 @@ jobs:
   publish:
     name: Publish to ${{ inputs.target-branch }}
     needs: [discover, build]
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 10
     permissions:
       contents: write

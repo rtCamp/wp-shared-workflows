@@ -3,6 +3,10 @@ name: CI / Detect Changes
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       node-version:
         description: "Node.js version used to run the wp-tooling CLI."
         type: string
@@ -68,7 +72,7 @@ permissions:
 jobs:
   detect:
     name: Detect changes
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     outputs:
       # css/js/php come from the scope step; total/ignored/gha stay repo-wide on detect.
       total-count: ${{ steps.detect.outputs.total-count }}

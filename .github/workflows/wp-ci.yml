@@ -3,6 +3,10 @@ name: CI / Orchestrator
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       project-type:
         description: "Shape of the project at working-dir, selecting the job preset: plugin | theme | package. Describes the one unit this call targets, not the repository."
         type: string
@@ -87,7 +91,7 @@ permissions:
 jobs:
   validate-inputs:
     name: Validate inputs
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     outputs:
       # Children must consume this, NOT inputs.working-dir: an unnormalised "" or
       # "./themes/foo" breaks cache-dependency-path and defeats artifact-gate's anchor.
@@ -162,6 +166,7 @@ jobs:
     needs: [validate-inputs]
     uses: ./.github/workflows/ci-detect-changes.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       # A path scope, not a cwd — the detector still diffs from the repo root.
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
       ignore-paths: ${{ inputs.ignore-paths }}
@@ -177,6 +182,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',lint-css,')
     uses: ./.github/workflows/ci-lint-css.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       changed-files: ${{ needs.detect-changes.outputs.css-files }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
@@ -189,6 +195,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',lint-js,')
     uses: ./.github/workflows/ci-lint-js.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       changed-files: ${{ needs.detect-changes.outputs.js-files }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
@@ -201,6 +208,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',lint-php,')
     uses: ./.github/workflows/ci-lint-php.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       changed-files: ${{ needs.detect-changes.outputs.php-files }}
       enable-phpstan: ${{ inputs.enable-phpstan }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
@@ -214,6 +222,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',test-js,')
     uses: ./.github/workflows/ci-test-js.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-php:
@@ -234,6 +243,7 @@ jobs:
         exclude: ${{ fromJSON(inputs.test-php-exclude) }}
     uses: ./.github/workflows/ci-test-php.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       php-version: ${{ matrix.php }}
       wp-version: ${{ matrix.wp }}
       use-wp-env: ${{ inputs.use-wp-env }}
@@ -248,6 +258,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',build,')
     uses: ./.github/workflows/ci-build.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       # Only upload when build-artifact runs (it consumes this); otherwise build just compiles.
       upload-artifact: ${{ inputs.build-artifact-path != '' }}
       artifact-name: ${{ needs.validate-inputs.outputs.artifact-name }}
@@ -267,6 +278,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',build-artifact,')
     uses: ./.github/workflows/ci-test-build-artifact.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       artifact-name: ${{ needs.validate-inputs.outputs.artifact-name }}
       slug: ${{ needs.validate-inputs.outputs.artifact-slug }}
       install-path: ${{ needs.validate-inputs.outputs.install-path }}
@@ -284,6 +296,7 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',a11y,')
     uses: ./.github/workflows/ci-test-a11y.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   # Opt-in via gated-paths: fails a PR that commits build output, which is only correct where
@@ -297,5 +310,6 @@ jobs:
       && !contains(format(',{0},', inputs.skip), ',artifact-gate,')
     uses: ./.github/workflows/ci-build-artifact-gate.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       gated-paths: ${{ inputs.gated-paths }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}

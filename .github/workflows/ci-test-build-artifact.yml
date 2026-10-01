@@ -3,6 +3,10 @@ name: CI / Test Build Artifact
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       artifact-name:
         description: "Artifact to download. Must match the artifact-name uploaded by ci-build.yml in the same run."
         type: string
@@ -48,7 +52,7 @@ permissions:
 jobs:
   test-build-artifact:
     name: Boot artifact in wp-env
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 10
     defaults:
       run:

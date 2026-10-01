@@ -3,6 +3,10 @@ name: CD / GitHub Release
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       tag:
         description: "Tag that triggered the release, e.g. v1.2.3."
         type: string
@@ -49,7 +53,7 @@ permissions:
 jobs:
   release:
     name: Publish GitHub Release
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
       # An empty artifact-name would make download-artifact fetch every artifact in the run.
       - name: Validate inputs

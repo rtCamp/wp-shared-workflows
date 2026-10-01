@@ -3,6 +3,10 @@ name: CD / WordPress.org Deploy
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       slug:
         description: "Plugin slug on wordpress.org (the directory under plugins.svn.wordpress.org)."
         type: string
@@ -44,7 +48,7 @@ permissions:
 jobs:
   deploy:
     name: Deploy to WordPress.org
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
       # An empty slug would fall back to the deploy action's repo-name default and
       # deploy to the wrong plugin; an empty artifact-name downloads every artifact.

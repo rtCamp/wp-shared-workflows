@@ -3,6 +3,10 @@ name: CD / Orchestrator
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       tag:
         description: "Release tag that triggered the deploy, e.g. v1.2.3. Forwarded to every target."
         type: string
@@ -93,7 +97,7 @@ jobs:
   # deploy nothing, and a missing input/secret would fail mid-deploy.
   validate-inputs:
     name: Validate inputs
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
       - name: Check deploy targets and their required inputs and secrets
         env:
@@ -158,6 +162,7 @@ jobs:
     if: contains(format(',{0},', inputs.deploy-target), ',github,')
     uses: ./.github/workflows/cd-github-release.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       tag: ${{ inputs.tag }}
       artifact-name: ${{ inputs.artifact-name }}
       slug: ${{ inputs.slug }}
@@ -172,6 +177,7 @@ jobs:
     if: contains(format(',{0},', inputs.deploy-target), ',wporg,')
     uses: ./.github/workflows/cd-wp-org.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       slug: ${{ inputs.slug }}
       tag: ${{ inputs.tag }}
       artifact-name: ${{ inputs.artifact-name }}
@@ -188,6 +194,7 @@ jobs:
     if: contains(format(',{0},', inputs.deploy-target), ',s3,')
     uses: ./.github/workflows/cd-s3.yml
     with:
+      runs-on: ${{ inputs.runs-on }}
       tag: ${{ inputs.tag }}
       artifact-name: ${{ inputs.artifact-name }}
       bucket: ${{ inputs.bucket }}

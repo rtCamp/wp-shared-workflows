@@ -41,6 +41,10 @@ name: CI / Lint PHP
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON"
+        type: string
+        default: '"ubuntu-latest"'
       php-version:
         description: "PHP version to install"
         type: string
@@ -48,7 +52,7 @@ on:
 jobs:
   lint-php:
     name: Lint PHP
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -56,7 +60,7 @@ jobs:
 
 - 2-space indent, `kebab-case` input names, a `description:` on every input, a `name:` on every job and step. `bin/check-workflows.sh` enforces all four.
 - Third-party actions pinned to a commit SHA with a trailing `# vX.Y.Z` comment.
-- Every job runs on `runs-on: [self-hosted]`. rtCamp policy puts private repos on self-hosted runners, and a reusable workflow's jobs run in the caller's repo, so this is the consumer's runner too. `bin/check-workflows.sh` applies the org runner-policy allow-list (`self-hosted`, `high-performance`, `macOS`, `self-hosted-arm64`); use plain `[self-hosted]`, since every pool it reached in testing was linux-x64 and the pinned binaries this repo downloads are x86_64.
+- Every job in a reusable workflow runs on `runs-on: ${{ fromJSON(inputs.runs-on) }}`, from a `runs-on` input that defaults to `'"ubuntu-latest"'`, and `wp-ci.yml` and `wp-cd.yml` forward it to every leaf. A reusable workflow's jobs run in the caller's repo: a public repo cannot use rtCamp's self-hosted runners, and rtCamp policy puts private repos on them, so the caller chooses (`'["self-hosted"]'` for private repos). This repo's own CI (`ci-self-check.yml`) runs on `ubuntu-latest` because the repo is public. `bin/check-workflows.sh` enforces all three. On self-hosted, pass plain `["self-hosted"]`: every pool it reached in testing was linux-x64, and the pinned binaries this repo downloads are x86_64.
 - Caller values reach a `run:` body through step `env:`, never through `${{ }}` interpolation. `bin/check-workflows.sh` enforces this — interpolation is still fine in `env:`, `with:` and `if:`, which are not shell. Two shapes:
 
 **Value inputs** (`composer-flags`, `phpstan-level`, `changed-files`) become argv, so shell metacharacters stay literal:

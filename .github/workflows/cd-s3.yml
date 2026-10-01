@@ -3,6 +3,10 @@ name: CD / S3 Deploy
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       tag:
         description: "Release tag, e.g. v1.2.3. Used as the versioned object key (<prefix><tag>.zip)."
         type: string
@@ -41,7 +45,7 @@ permissions:
 jobs:
   deploy:
     name: Upload to S3
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
       # An empty tag would silently upload to '<prefix>.zip'; an empty artifact-name
       # downloads every artifact in the run.

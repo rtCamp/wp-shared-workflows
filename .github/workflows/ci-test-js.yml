@@ -3,6 +3,10 @@ name: CI / Test JS
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
       node-version:
         description: "Node.js version."
         type: string
@@ -29,7 +33,7 @@ permissions:
 jobs:
   test-js:
     name: Jest
-    runs-on: [self-hosted]
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     defaults:
       run:
         working-directory: ${{ inputs.working-dir }}
