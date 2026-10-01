@@ -16,7 +16,7 @@ on:
         type: string
         default: "vendor/bin/phpcs"
       changed-files:
-        description: "Newline-separated list of PHP files to lint with PHPCS. Empty = lint the whole project. PHPStan always runs whole-project — it analyses cross-file dependencies."
+        description: "Newline-separated changed files (ci-detect-changes' php-files). PHP files that still exist are linted file by file; if the list is empty or holds anything else (composer.json, composer.lock, PHPStan config), PHPCS lints the whole project. PHPStan always runs whole-project — it analyses cross-file dependencies."
         type: string
         default: ""
       phpstan-command:
@@ -101,10 +101,17 @@ jobs:
           # they stay argv. The pipe to cs2pr stays out here, so a non-zero phpcs still trips
           # pipefail exactly as before.
           args=(-q --report=checkstyle --runtime-set ignore_warnings_on_exit 1)
-          if [ -n "$CHANGED_FILES" ]; then
+          # php-files also lists composer.json, composer.lock and the PHPStan config, so a
+          # dependency or config change re-runs this job, and it can name files the change
+          # deleted. PHPCS only takes PHP files that exist; when anything else changed, a
+          # dependency or ruleset change can affect every file, so lint the whole project.
+          php_files=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.php$' \
+            | while IFS= read -r file; do [ ! -f "$file" ] || printf '%s\n' "$file"; done || true)
+          others=$(printf '%s\n' "$CHANGED_FILES" | grep -vE '^$|\.php$' || true)
+          if [ -n "$php_files" ] && [ -z "$others" ]; then
             tmp_list=$(mktemp)
             trap 'rm -f "$tmp_list"' EXIT
-            printf '%s\n' "$CHANGED_FILES" > "$tmp_list"
+            printf '%s\n' "$php_files" > "$tmp_list"
             args=(--file-list="$tmp_list" "${args[@]}")
           fi
           bash -eo pipefail -c "$PHPCS_COMMAND \"\$@\"" _ "${args[@]}" \
