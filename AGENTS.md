@@ -115,8 +115,8 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 
 ## PR instructions
 
-- Task branches `<version>/task/<kebab-slug>` off the active release branch. Never commit to `main`.
+- Task branches `<version>/task/<kebab-slug>` off `main`. Never commit to `main` directly.
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat(ci): add lint-css workflow`.
-- PR title `[<version>] <subject>`, targeting the release branch. Squash merge; release branch → `main` is a merge commit.
+- PR title `[<version>] <subject>`, targeting `main`. Squash merge.
 - Ensure the Code quality commands pass, the caller example is updated alongside the workflow, and a `CHANGELOG.md` entry is added — see `CONTRIBUTING.md` for the full checklist.
 - Ask first before removing or renaming an input, adding a deploy target, or granting a job `contents: write` it does not already need.

@@ -48,7 +48,7 @@ caller at your branch.
 
 ## Pull request checklist
 
-- [ ] Branch is `<version>/task/<kebab-slug>`, based on the active release branch.
+- [ ] Branch is `<version>/task/<kebab-slug>`, based on `main`.
 - [ ] The three commands above pass locally.
 - [ ] Every new or changed input has a `description:`.
 - [ ] `examples/<workflow>.yml` added or updated to match.
