@@ -4,6 +4,13 @@ All notable changes to `@rtcamp/wp-shared-workflows` are documented in this file
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- `ci-lint-css.yml` no longer passes `package.json` and `package-lock.json` to Stylelint. `ci-detect-changes` lists them in `css-files` so that a dependency change re-runs the job, and Stylelint failed on them with `CssSyntaxError`. When `changed-files` holds anything other than stylesheets, or is empty, the job now runs `lint-command` over the whole project.
+- `ci-lint-php.yml` no longer passes deleted files or non-PHP files to PHPCS. `ci-detect-changes` lists `composer.json`, `composer.lock` and the PHPStan config in `php-files`, and a change that deletes PHP files lists them too, so PHPCS failed with `does not exist` or `Start tag expected`. Changed PHP files that still exist are linted file by file; if the list holds anything else, PHPCS lints the whole project.
+
 ## v1.0.0 - 2026-09-30
 
 First tagged release. Consumers pin `@v1`.
