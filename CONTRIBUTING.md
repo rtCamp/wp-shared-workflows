@@ -21,7 +21,7 @@ single job starts. Treat the input surface as stable.
 There is nothing to build. Install the linters once:
 
 ```bash
-brew install actionlint yq jq        # or your platform's equivalent
+brew install actionlint yq jq pipx   # or your platform's equivalent
 ```
 
 ## Before you open a PR

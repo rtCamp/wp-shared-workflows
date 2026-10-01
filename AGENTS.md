@@ -1,7 +1,7 @@
 ## Dev environment tips
 
 ```bash
-brew install actionlint yq jq                                        # the only tooling this repo needs
+brew install actionlint yq jq pipx                                   # the only tooling this repo needs
 ```
 
 Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML or Bash.
