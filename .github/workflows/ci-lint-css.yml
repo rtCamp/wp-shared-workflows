@@ -12,7 +12,7 @@ on:
         type: string
         default: "npm run lint:css"
       changed-files:
-        description: "Newline-separated list of CSS files to lint. Empty = run lint-command over the whole project."
+        description: "Newline-separated changed files (ci-detect-changes' css-files). Stylesheets are linted file by file; if the list is empty or holds anything else (package.json, package-lock.json), lint-command runs over the whole project."
         type: string
         default: ""
       working-dir:
@@ -51,8 +51,13 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed-files }}
           LINT_COMMAND: ${{ inputs.lint-command }}
         run: |
-          if [ -n "$CHANGED_FILES" ]; then
-            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx --no-install stylelint --
+          # css-files also lists package.json and package-lock.json, so a dependency
+          # change re-runs this job. Stylelint cannot parse them, and a dependency
+          # change can affect every stylesheet, so lint the whole project then.
+          stylesheets=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.s?css$' || true)
+          others=$(printf '%s\n' "$CHANGED_FILES" | grep -vE '^$|\.s?css$' || true)
+          if [ -n "$stylesheets" ] && [ -z "$others" ]; then
+            printf '%s\n' "$stylesheets" | xargs -d '\n' --no-run-if-empty npx --no-install stylelint --
           else
             bash -eo pipefail -c "$LINT_COMMAND"
           fi
