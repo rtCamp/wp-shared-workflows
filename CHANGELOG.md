@@ -27,6 +27,7 @@ First tagged release. Consumers pin `@v1`.
 - Every job runs on `runs-on: [self-hosted]`, per rtCamp's policy for private repositories. A reusable workflow's jobs run in the calling repository, so the caller needs access to the org's self-hosted runner group. `bin/check-workflows.sh` applies the same label allow-list as the org's runner-policy scanner, which stops checking a repository once it is public. These runners do not ship the AWS CLI, so `cd-s3.yml` installs a pinned, checksum-verified one when the runner has none.
 - `ci-detect-changes.yml`, and so `wp-ci.yml`, now fetch an explicit `base-ref` before diffing. The CLI diffs an explicit base as-is, and the depth-2 checkout never holds a branch such as `main`, so the diff failed, the CLI reported zero changes, and every downstream job skipped while the run passed green. The step also fails when the CLI reports a failed diff in any mode, instead of passing with nothing checked.
 - `ci-test-build-artifact.yml` pins `wp-cli/doctor-command` to 2.3.1. `@stable` resolved to v3.0.0 (released 2026-08-04), which requires wp-cli ^3.0, while the wp-env cli container ships 2.12, so the job failed at the package install for every caller.
+- `AGENTS.md` and `CONTRIBUTING.md` now base task branches and pull requests on `main`, add `pipx` to the install line because `pipx run yamllint` needs it, and list Docker Compose v2 as missing on the self-hosted runners.
 
 ### Added
 
