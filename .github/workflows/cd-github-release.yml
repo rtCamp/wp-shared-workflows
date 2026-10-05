@@ -126,7 +126,7 @@ jobs:
             echo "::error::Changelog not found at '$CHANGELOG_PATH'"
             exit 1
           fi
-          # Component tags reduce to their version: acme-blocks-v1.2.3 -> 1.2.3.
+          # Component tags reduce to their version, prerelease included: acme-blocks-v1.2.3-rc.1 -> 1.2.3-rc.1.
           ver="${TAG#v}"
           if [[ "$TAG" =~ ^(.+-)?v?([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
             ver="${BASH_REMATCH[2]}"

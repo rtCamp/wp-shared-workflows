@@ -115,8 +115,8 @@ jobs:
       artifact-name: acme-blocks
 ```
 
-The action reads `release-please-config.json` and `.release-please-manifest.json` from the repository
-root. For a manifest package at a path, read
+`release-please-action` reads `release-please-config.json` and `.release-please-manifest.json` from
+the repository root. For a manifest package at a path, read
 `steps.release.outputs['plugins/acme-blocks--release_created']` and `…--tag_name` instead.
 
 With immutable releases enabled, a published release takes no new assets. Set `"draft": true` and
