@@ -8,33 +8,35 @@ on:
         type: string
         default: '"ubuntu-latest"'
       php-version:
-        description: "PHP version."
+        description: "PHP version. Leave empty for 8.3."
         type: string
-        default: "8.3"
+        default: ""
       enable-phpstan:
         description: "Run PHPStan after PHPCS."
         type: boolean
         default: false
       phpcs-command:
-        description: "PHPCS binary path or custom command."
+        description: "PHPCS binary path or custom command. Leave empty for 'vendor/bin/phpcs'."
         type: string
-        default: "vendor/bin/phpcs"
+        default: ""
       changed-files:
         description: "Newline-separated changed files (ci-detect-changes' php-files). PHP files that still exist are linted file by file; if the list is empty or holds anything else (composer.json, composer.lock, PHPStan config), PHPCS lints the whole project. PHPStan always runs whole-project — it analyses cross-file dependencies."
         type: string
         default: ""
       phpstan-command:
-        description: "Shell command that runs PHPStan."
+        description: "Shell command that runs PHPStan. Leave empty for 'vendor/bin/phpstan analyse'."
         type: string
-        default: "vendor/bin/phpstan analyse"
+        default: ""
       phpstan-level:
         description: "Override PHPStan level. Empty uses the level from phpstan.neon.dist."
         type: string
         default: ""
       composer-flags:
-        description: "Flags passed to `composer install`. Default includes `--no-scripts` for supply-chain hygiene."
+        description: >-
+          Flags passed to `composer install`. Leave empty for '--prefer-dist --optimize-autoloader
+          --no-progress --no-interaction --no-scripts'; `--no-scripts` is there for supply-chain hygiene.
         type: string
-        default: "--prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
+        default: ""
       validate-composer:
         description: "Run `composer validate` before installing. Disable for packages without composer.lock."
         type: boolean
@@ -61,7 +63,7 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
         with:
-          php-version: ${{ inputs.php-version }}
+          php-version: ${{ inputs.php-version || '8.3' }}
           tools: composer, cs2pr
           coverage: none
           # Raises the GitHub API rate limit when composer install resolves a VCS repo.
@@ -88,7 +90,7 @@ jobs:
       - name: Install Composer dependencies
         shell: bash
         env:
-          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+          COMPOSER_FLAGS: ${{ inputs.composer-flags || '--prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts' }}
         run: |
           set -euo pipefail
           read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
@@ -98,7 +100,7 @@ jobs:
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed-files }}
-          PHPCS_COMMAND: ${{ inputs.phpcs-command }}
+          PHPCS_COMMAND: ${{ inputs.phpcs-command || 'vendor/bin/phpcs' }}
         run: |
           set -euo pipefail
           # phpcs-command is a command and runs as shell; the report flags are appended as "$@" so
@@ -125,7 +127,7 @@ jobs:
         if: ${{ inputs.enable-phpstan }}
         shell: bash
         env:
-          PHPSTAN_COMMAND: ${{ inputs.phpstan-command }}
+          PHPSTAN_COMMAND: ${{ inputs.phpstan-command || 'vendor/bin/phpstan analyse' }}
           PHPSTAN_LEVEL: ${{ inputs.phpstan-level }}
         run: |
           set -eo pipefail
