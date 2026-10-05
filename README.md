@@ -84,6 +84,8 @@ Pin a version tag. `@v1` and `@v1.2` are aliases that move forward to compatible
 | `@v1.2` | Latest patch of the `v1.2` line |
 | `@v1.2.3` | One exact release |
 
+Releases are cut by [release-please](https://github.com/googleapis/release-please) from the Conventional Commits merged to `main`.
+
 Within a major version, inputs are only ever added, and always with a default. Removing or renaming
 an input, or making one required, ships as a new major.
 

@@ -19,7 +19,6 @@ cd "$ROOT"
 
 WORKFLOW_DIR=".github/workflows"
 EXAMPLE_DIR="examples"
-SELF_CHECK="ci-self-check.yml"
 EXPECTED_REF="v1"
 USES_PREFIX="rtCamp/wp-shared-workflows/.github/workflows"
 # Reusable workflows run in the caller's repo, so the caller picks the runner.
@@ -44,19 +43,24 @@ done
 
 as_json() { yq -o=json '.' "$1"; }
 
+is_reusable() { as_json "$1" | jq -e '.["on"] | type == "object" and has("workflow_call")' >/dev/null; }
+
 # --- 1. one example per workflow, one workflow per example -------------------
 
 for wf in "$WORKFLOW_DIR"/*.yml; do
   base="$(basename "$wf")"
-  [ "$base" = "$SELF_CHECK" ] && continue
+  is_reusable "$wf" || continue
   [ -f "$EXAMPLE_DIR/$base" ] ||
     err "$wf has no caller example — create $EXAMPLE_DIR/$base"
 done
 
 for ex in "$EXAMPLE_DIR"/*.yml; do
   base="$(basename "$ex")"
-  [ -f "$WORKFLOW_DIR/$base" ] ||
+  if [ ! -f "$WORKFLOW_DIR/$base" ]; then
     err "$ex has no matching workflow at $WORKFLOW_DIR/$base — rename or remove it"
+  elif ! is_reusable "$WORKFLOW_DIR/$base"; then
+    err "$ex matches $WORKFLOW_DIR/$base, which is repo-local (no on: workflow_call) — remove the example"
+  fi
 done
 
 # --- 2 + 3. every example call matches the workflow it calls -----------------

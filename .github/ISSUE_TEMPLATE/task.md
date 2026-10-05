@@ -103,7 +103,6 @@ $ ...
 - [ ]
 
 ### Housekeeping
-- [ ] `CHANGELOG.md` entry under the current version heading
 - [ ] `examples/<workflow>.yml` added or updated to match
 
 ---
@@ -118,19 +117,18 @@ $ ...
 
 | | |
 |---|---|
-| **Base your branch on** | `release/<milestone>` |
-| **Branch name** | `<milestone>/task/<slug>` |
-| **PR target** | `release/<milestone>` |
-| **PR title** | `[<milestone>] <commit-subject>` |
-| **Commit style** | [Conventional Commits](https://www.conventionalcommits.org/) |
+| **Base your branch on** | `main` |
+| **Branch name** | `<type>/<slug>`, e.g. `fix/runs-on-input` |
+| **PR target** | `main` |
+| **PR title** | A [Conventional Commit](https://www.conventionalcommits.org/) `<type>(<scope>): <short changelog entry>` |
 
 ```bash
 git fetch origin
-git checkout release/<milestone>
+git checkout main
 git pull
-git checkout -b <milestone>/task/<slug>
+git checkout -b <type>/<slug>
 # work, commit
-git push -u origin <milestone>/task/<slug>
+git push -u origin <type>/<slug>
 ```
 
 PR description starts with `Closes #<this-issue>` so the Project card auto-moves to Done on merge.

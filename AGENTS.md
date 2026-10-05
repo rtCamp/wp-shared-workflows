@@ -13,7 +13,9 @@ Nothing to build, no `package.json`, no `node_modules`. Every file here is YAML 
 - `.github/workflows/cd-*.yml` — opt-in deploy leaves: `github-release`, `wp-org`, `s3`, `built-branch`
 - `.github/workflows/wp-cd.yml` — optional CD orchestrator; fans out to `github-release`, `wp-org` and `s3` by `deploy-target`
 - `.github/workflows/version-monitor.yml` — monthly version-bump check that opens a draft PR
-- `.github/workflows/ci-self-check.yml` — this repo's own CI; the only workflow not `on: workflow_call`
+- `.github/workflows/ci-self-check.yml` — this repo's own CI
+- `.github/workflows/release.yml`, `pr-title.yml` — this repo's own release automation. These and `ci-self-check.yml` are the only workflows not `on: workflow_call`, so they have no caller example
+- `release-please-config.json`, `.release-please-manifest.json` — release-please config and the current version
 - `examples/<name>.yml` — exactly one caller example per workflow, matched by filename
 - `bin/check-workflows.sh` — enforces the examples contract and the conventions below
 
@@ -104,6 +106,7 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 - **Everything gated on what changed**: `ci-detect-changes.yml` buckets the diff and every downstream job keys off it, so a docs-only PR runs almost nothing.
 - **Logic that needs a real language lives elsewhere**: `@rtcamp/wp-tooling`, invoked as `npx wp-tooling <command>`. Repo-local automation is Bash under `bin/`.
 - **Examples are executable documentation**: one per workflow, verified in CI, comment-free, pinned `@v1`. They target a `wp-content`-shaped monorepo because that is the shape people get wrong. Anything consuming a build artifact shows the producing `ci-build` job and the `needs:` edge in the same file.
+- **Releases are cut by release-please**: `release.yml` reads the Conventional Commit subjects merged to `main`, keeps a release PR open that bumps `.release-please-manifest.json` and writes `CHANGELOG.md`, and merging that PR tags `vX.Y.Z` and publishes the GitHub Release.
 - **Prefer official tooling**: `actions/checkout`, `actions/setup-node`, `shivammathur/setup-php`, and WordPress/Automattic-maintained actions over third-party ones.
 
 ## Common pitfalls
@@ -114,13 +117,13 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 - The self-hosted runners are ARC pods on Ubuntu 24.04 x64 with a minimal image, not GitHub's `ubuntu-latest`. They have `git`, `curl`, `jq`, `zip`, `rsync`, `python3`, `gh` and `docker`, but no Docker Compose v2, `yq`, `pip`, `aws` or `svn`, and no Node or PHP until `setup-node`/`setup-php` run. wp-env needs Compose v2, so jobs that boot wp-env fail on these runners until the image or the workflow provides it. `/usr/local/bin` needs `sudo`, which is passwordless. Install what a step needs, pinned and checksum-verified, as `ci-self-check.yml` does for `actionlint` and `yq` and `cd-s3.yml` does for the AWS CLI. apt's `yq` is kislyuk's jq wrapper, not the mikefarah `yq` this repo uses.
 - `actionlint` shells out to whatever `shellcheck` is on `PATH`, and rule behaviour differs between shellcheck releases — a local pass does not guarantee a CI pass. Write shell that is clean on older versions too: prefer `guard || continue` and explicit `if` blocks over `A && B || C`, which SC2015 flags on shellcheck 0.10 and earlier.
 - A green `bin/check-workflows.sh` proves input *names* are right, not input *values*. A wrong `build-command` or `artifact-path` only surfaces in a real consumer run.
+- Never hand-edit `CHANGELOG.md` or `.release-please-manifest.json`, and never push a `v*` tag by hand; release-please owns all three. To fix an entry, edit the open release PR.
 - `cd-github-release.yml` extracts release notes by matching a version heading in `CHANGELOG.md`, and deliberately fails rather than publishing empty notes. Cut `## Unreleased` to `## vX.Y.Z - YYYY-MM-DD` before tagging.
 - Consumers pin `@v1`, never a branch such as `@release/v1.0.0`. A moving ref has already broken real consumer runs mid-change.
 
 ## PR instructions
 
-- Task branches `<version>/task/<kebab-slug>` off `main`. Never commit to `main` directly.
-- [Conventional Commits](https://www.conventionalcommits.org/): `feat(ci): add lint-css workflow`.
-- PR title `[<version>] <subject>`, targeting `main`. Squash merge.
-- Ensure the Code quality commands pass, the caller example is updated alongside the workflow, and a `CHANGELOG.md` entry is added — see `CONTRIBUTING.md` for the full checklist.
+- GitHub flow: branch off `main`, PR back into `main`. A release is a tag on `main` that release-please cuts. Name branches `<type>/<kebab-slug>` (`fix/runs-on-input`). Never commit to `main` directly.
+- [Conventional Commits](https://www.conventionalcommits.org/) for the PR title: `feat(ci): Add lint-css workflow`.
+- Ensure the Code quality commands pass, the caller example is updated alongside the workflow, and the PR title says what changed for a consumer — see `CONTRIBUTING.md` for the full checklist.
 - Ask first before removing or renaming an input, adding a deploy target, or granting a job `contents: write` it does not already need.

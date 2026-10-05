@@ -33,7 +33,7 @@ $ ...
 - [ ] Tests pass
 
 ### Housekeeping
-- [ ] `CHANGELOG.md` entry under the current version heading
+- [ ] PR title is a Conventional Commit — release-please writes `CHANGELOG.md` from it
 - [ ] `examples/<workflow>.yml` added or updated to match any input change
 - [ ] `yamllint`, `actionlint` and `bin/check-workflows.sh` pass locally
 
