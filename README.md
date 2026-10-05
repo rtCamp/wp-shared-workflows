@@ -62,10 +62,80 @@ one `wp-cd.yml` call.
 | Workflow | What it does | Example |
 |---|---|---|
 | [`wp-cd.yml`](.github/workflows/wp-cd.yml) | CD orchestrator. One call fans out to `github`, `wporg` and `s3` from `deploy-target` | [example](examples/wp-cd.yml) |
-| [`cd-github-release.yml`](.github/workflows/cd-github-release.yml) | GitHub Release from a tag + artifact, notes from `CHANGELOG.md` | [example](examples/cd-github-release.yml) |
+| [`cd-github-release.yml`](.github/workflows/cd-github-release.yml) | GitHub Release from a tag + artifact, notes from `CHANGELOG.md`; attaches to the release instead when one exists | [example](examples/cd-github-release.yml) |
 | [`cd-wp-org.yml`](.github/workflows/cd-wp-org.yml) | WordPress.org SVN deploy | [example](examples/cd-wp-org.yml) |
 | [`cd-s3.yml`](.github/workflows/cd-s3.yml) | S3 upload + optional CloudFront invalidation | [example](examples/cd-s3.yml) |
 | [`cd-built-branch.yml`](.github/workflows/cd-built-branch.yml) | Force-pushes source + generated output to a deploy branch | [example](examples/cd-built-branch.yml) |
+
+#### With release-please
+
+release-please creates the tag and the GitHub Release with `GITHUB_TOKEN`, which never starts an
+`on: push: tags` workflow. Build and attach in the same workflow instead, gated on its output;
+`cd-github-release.yml` sees the existing release and only uploads the zip:
+
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+
+  build:
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-build.yml@v1
+    with:
+      build-command: npm run build:prod && npm run package
+      upload-artifact: true
+      artifact-name: acme-blocks
+      artifact-path: dist/acme-blocks
+
+  release:
+    needs: [release-please, build]
+    permissions:
+      contents: write
+    uses: rtCamp/wp-shared-workflows/.github/workflows/cd-github-release.yml@v1
+    with:
+      tag: ${{ needs.release-please.outputs.tag }}
+      artifact-name: acme-blocks
+```
+
+`release-please-action` reads `release-please-config.json` and `.release-please-manifest.json` from
+the repository root. For a manifest package at a path, read
+`steps.release.outputs['plugins/acme-blocks--release_created']` and `…--tag_name` instead.
+
+With immutable releases enabled, a published release takes no new assets. Set `"draft": true` and
+`"force-tag-creation": true` in `release-please-config.json`, and publish once the zip is attached:
+
+```yaml
+  publish:
+    needs: [release-please, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false
+```
 
 ### Maintenance
 

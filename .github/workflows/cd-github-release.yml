@@ -8,7 +8,9 @@ on:
         type: string
         default: '"ubuntu-latest"'
       tag:
-        description: "Tag that triggered the release, e.g. v1.2.3."
+        description: >-
+          Tag to release, e.g. v1.2.3, or a component tag such as acme-blocks-v1.2.3 from a
+          multi-package release-please manifest. Its version selects the changelog section.
         type: string
         required: true
       artifact-name:
@@ -28,15 +30,17 @@ on:
         type: string
         default: ""
       changelog-path:
-        description: "Path to the changelog whose matching section becomes the release body."
+        description: >-
+          Path to the changelog whose matching section becomes the release body. Ignored when a
+          release for the tag already exists, e.g. one release-please created.
         type: string
         default: "CHANGELOG.md"
       draft:
-        description: "Create the GitHub Release as a draft."
+        description: "Create the GitHub Release as a draft. Ignored when a release for the tag already exists."
         type: boolean
         default: false
       prerelease:
-        description: "Mark the GitHub Release as a prerelease."
+        description: "Mark the GitHub Release as a prerelease. Ignored when a release for the tag already exists."
         type: boolean
         default: false
       working-dir:
@@ -69,6 +73,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
+      # If the release already exists (e.g. made by release-please), only attach the asset.
+      - name: Check for an existing release
+        id: existing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --json tagName >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download release artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
@@ -77,6 +97,7 @@ jobs:
 
       - name: Extract changelog section
         id: notes
+        if: steps.existing.outputs.exists != 'true'
         shell: bash
         env:
           TAG: ${{ inputs.tag }}
@@ -105,11 +126,14 @@ jobs:
             echo "::error::Changelog not found at '$CHANGELOG_PATH'"
             exit 1
           fi
+          # Component tags reduce to their version, prerelease included: acme-blocks-v1.2.3-rc.1 -> 1.2.3-rc.1.
           ver="${TAG#v}"
-          # Capture the body under the heading whose first token matches the tag's
-          # version, tolerating "## v1.2.3", "## 1.2.3", "## [1.2.3]", "## [v1.2.3]"
-          # and an optional trailing " - date". Exact token compare keeps "## Unreleased"
-          # and "## v1.2.30" from matching "v1.2.3".
+          if [[ "$TAG" =~ ^(.+-)?v?([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            ver="${BASH_REMATCH[2]}"
+          fi
+          # Print the section under the heading that matches the version:
+          # "## v1.2.3", "## [1.2.3]" or release-please's "## [1.2.3](url) (date)".
+          # Exact match, so "## Unreleased" and "## v1.2.30" never match 1.2.3.
           awk -v ver="$ver" '
             /^## / {
               if (capture) { exit }
@@ -117,6 +141,7 @@ jobs:
               sub(/^##[ \t]+/, "", line)
               split(line, parts, /[ \t]+/)
               head = parts[1]
+              sub(/\]\(.*$/, "", head)
               gsub(/^\[|\]$/, "", head)
               sub(/^v/, "", head)
               if (head == ver) { capture = 1 }
@@ -178,21 +203,31 @@ jobs:
           echo "::notice::Packaged ${#entries[@]} top-level entries into ${SLUG}.zip (root: ${SLUG}/)."
           echo "asset=${SLUG}.zip" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
           ASSET: ${{ steps.asset.outputs.asset }}
+          EXISTS: ${{ steps.existing.outputs.exists }}
           DRAFT: ${{ inputs.draft }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
-          args=(release create "$TAG" "$ASSET" --verify-tag --title "$TAG" --notes-file release-notes.md)
-          if [ "$DRAFT" = "true" ]; then
-            args+=(--draft)
+          if [ "$EXISTS" = "true" ]; then
+            echo "::notice::Release $TAG already exists; attaching $ASSET and leaving its notes, title, draft and prerelease state unchanged."
+            # --clobber: a rerun replaces the asset instead of failing.
+            if ! gh release upload "$TAG" "$ASSET" --clobber; then
+              echo "::error::Could not attach $ASSET to $TAG. If immutable releases are on, have release-please create a draft and publish it after this job."
+              exit 1
+            fi
+          else
+            args=(release create "$TAG" "$ASSET" --verify-tag --title "$TAG" --notes-file release-notes.md)
+            if [ "$DRAFT" = "true" ]; then
+              args+=(--draft)
+            fi
+            if [ "$PRERELEASE" = "true" ]; then
+              args+=(--prerelease)
+            fi
+            gh "${args[@]}"
           fi
-          if [ "$PRERELEASE" = "true" ]; then
-            args+=(--prerelease)
-          fi
-          gh "${args[@]}"
