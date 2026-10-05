@@ -8,16 +8,16 @@ on:
         type: string
         default: '"ubuntu-latest"'
       node-version:
-        description: "Node.js version."
+        description: "Node.js version. Leave empty to read .nvmrc from working-dir, then the repo root, falling back to 22."
         type: string
-        default: "22"
+        default: ""
       test-command:
         description: >-
-          Shell command that runs Jest. When enable-cache is true, --cacheDirectory=<path> is
-          appended as "$@", so a custom command must forward its arguments through to Jest — the
-          default does, via npm's `--` separator.
+          Shell command that runs Jest. Leave empty for 'npm run test:js -- --ci'. When
+          enable-cache is true, --cacheDirectory=<path> is appended as "$@", so a custom command
+          must forward its arguments through to Jest — the default does, via npm's `--` separator.
         type: string
-        default: "npm run test:js -- --ci"
+        default: ""
       enable-cache:
         description: "Cache Jest transform/result data across runs."
         type: boolean
@@ -41,10 +41,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
+      # Node version: the input, else .nvmrc (working-dir, then repo root), else 22.
+      - name: Resolve Node.js version
+        id: node
+        shell: bash
+        env:
+          NODE_VERSION: ${{ inputs.node-version }}
+          WORKING_DIR: ${{ inputs.working-dir }}
+        run: |
+          set -euo pipefail
+          # setup-node reads the file path from the repo root.
+          if [ -n "$NODE_VERSION" ]; then
+            echo "version=$NODE_VERSION" >> "$GITHUB_OUTPUT"
+          elif [ -s .nvmrc ]; then
+            echo "file=$WORKING_DIR/.nvmrc" >> "$GITHUB_OUTPUT"
+          elif [ -s "$GITHUB_WORKSPACE/.nvmrc" ]; then
+            echo "file=.nvmrc" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=22" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ steps.node.outputs.version }}
+          node-version-file: ${{ steps.node.outputs.file }}
           cache: npm
           # setup-node is a JS action: without this it looks for the lockfile at the repo root.
           cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
@@ -71,7 +92,7 @@ jobs:
       - name: Run Jest
         shell: bash
         env:
-          TEST_COMMAND: ${{ inputs.test-command }}
+          TEST_COMMAND: ${{ inputs.test-command || 'npm run test:js -- --ci' }}
           # Jest reads cacheDirectory from its config or --cacheDirectory only; there is no
           # environment variable for it, so the flag has to be appended to the command.
           JEST_CACHE_DIR: ${{ steps.jest-cache.outputs.dir }}

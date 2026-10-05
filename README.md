@@ -32,6 +32,10 @@ runner policy) and pass:
 
 `wp-ci.yml` and `wp-cd.yml` forward it to every workflow they call.
 
+Node comes from `.nvmrc` in `working-dir`, then the repository root, falling back to 22; set
+`node-version` to override it. `wp-ci.yml` also forwards `php-version`, the Composer settings and a
+`*-command` input per job, each falling back to that job's default when left empty.
+
 ## Workflows
 
 Each workflow declares its inputs, secrets and outputs in its own `workflow_call` block, and GitHub
