@@ -232,7 +232,7 @@ jobs:
             node_version="$(jq -r --arg d "$INPUT_NODE_VERSION" '.["node-version"] // $d' <<<"$item")"
             node_version_file=""
             if [ -z "$node_version" ]; then
-              if [ -s "$dir/.nvmrc" ]; then node_version_file="${dir%/}/.nvmrc"
+              if [ -s "$dir/.nvmrc" ]; then node_version_file="$dir/.nvmrc"
               elif [ -s .nvmrc ]; then node_version_file=".nvmrc"
               else node_version="22"
               fi
