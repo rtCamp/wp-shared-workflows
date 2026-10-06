@@ -12,9 +12,9 @@ on:
         type: string
         default: "8.3"
       node-version:
-        description: "Node.js version (used only when use-wp-env is true)."
+        description: "Node.js version, used only when use-wp-env is true. Leave empty to read .nvmrc from working-dir, then the repo root, falling back to 22."
         type: string
-        default: "22"
+        default: ""
       wp-version:
         description: >-
           WordPress core version for wp-env, e.g. '6.8' (resolved as WordPress/WordPress#<version>).
@@ -30,9 +30,9 @@ on:
         type: string
         default: ""
       composer-flags:
-        description: "Flags passed to composer install."
+        description: "Flags passed to composer install. Leave empty for '--no-interaction --prefer-dist --no-progress --no-scripts'."
         type: string
-        default: "--no-interaction --prefer-dist --no-progress --no-scripts"
+        default: ""
       working-dir:
         description: "Working directory for monorepos."
         type: string
@@ -67,11 +67,33 @@ jobs:
           # Raises the GitHub API rate limit when composer install resolves a VCS repo.
           github-token: ${{ github.token }}
 
+      # Node version: the input, else .nvmrc (working-dir, then repo root), else 22.
+      - name: Resolve Node.js version
+        id: node
+        if: ${{ inputs.use-wp-env }}
+        shell: bash
+        env:
+          NODE_VERSION: ${{ inputs.node-version }}
+          WORKING_DIR: ${{ inputs.working-dir }}
+        run: |
+          set -euo pipefail
+          # setup-node reads the file path from the repo root.
+          if [ -n "$NODE_VERSION" ]; then
+            echo "version=$NODE_VERSION" >> "$GITHUB_OUTPUT"
+          elif [ -s .nvmrc ]; then
+            echo "file=$WORKING_DIR/.nvmrc" >> "$GITHUB_OUTPUT"
+          elif [ -s "$GITHUB_WORKSPACE/.nvmrc" ]; then
+            echo "file=.nvmrc" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=22" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
         if: ${{ inputs.use-wp-env }}
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ steps.node.outputs.version }}
+          node-version-file: ${{ steps.node.outputs.file }}
           cache: npm
           # setup-node is a JS action: without this it looks for the lockfile at the repo root.
           cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
@@ -79,7 +101,7 @@ jobs:
       - name: Install Composer dependencies
         shell: bash
         env:
-          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+          COMPOSER_FLAGS: ${{ inputs.composer-flags || '--no-interaction --prefer-dist --no-progress --no-scripts' }}
         run: |
           set -euo pipefail
           read -r -a composer_args <<< "$COMPOSER_FLAGS" || true

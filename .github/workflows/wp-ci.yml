@@ -77,6 +77,62 @@ on:
           where CI generates the build output.
         type: string
         default: ""
+      node-version:
+        description: "Node.js version for every job that runs project code. Leave empty to read .nvmrc from working-dir, then the repo root, falling back to 22."
+        type: string
+        default: ""
+      php-version:
+        description: "PHP version for lint-php, build and build-artifact; test-php uses php-versions. Leave empty for each workflow's default."
+        type: string
+        default: ""
+      composer-flags:
+        description: "Flags for composer install in lint-php and test-php. Leave empty for each workflow's default."
+        type: string
+        default: ""
+      build-composer-flags:
+        description: "Flags for composer install in build, when install-composer-deps is true. Leave empty for ci-build.yml's default, which includes --no-dev."
+        type: string
+        default: ""
+      install-composer-deps:
+        description: "Install Composer dependencies before the build."
+        type: boolean
+        default: false
+      build-command:
+        description: "Shell command that produces the production build, for build and a11y. Leave empty for each workflow's default."
+        type: string
+        default: ""
+      lint-css-command:
+        description: "Shell command that runs Stylelint; changed stylesheets are appended as arguments. Leave empty for ci-lint-css.yml's default."
+        type: string
+        default: ""
+      lint-js-command:
+        description: "Shell command that runs ESLint; changed JS files are appended as arguments. Leave empty for ci-lint-js.yml's default."
+        type: string
+        default: ""
+      phpcs-command:
+        description: "PHPCS binary path or custom command. Leave empty for ci-lint-php.yml's default."
+        type: string
+        default: ""
+      phpstan-command:
+        description: "Shell command that runs PHPStan when enable-phpstan is true. Leave empty for ci-lint-php.yml's default."
+        type: string
+        default: ""
+      test-js-command:
+        description: "Shell command that runs Jest. With test-js-cache, it must forward its arguments to Jest (see ci-test-js.yml). Leave empty for ci-test-js.yml's default."
+        type: string
+        default: ""
+      test-js-cache:
+        description: "Cache Jest data across runs in test-js."
+        type: boolean
+        default: true
+      test-php-command:
+        description: "Shell command that runs PHPUnit. Leave empty for ci-test-php.yml's default."
+        type: string
+        default: ""
+      a11y-command:
+        description: "Shell command that runs pa11y-ci. Leave empty for ci-test-a11y.yml's default."
+        type: string
+        default: ""
 
 # project-type and working-dir are in the group so a monorepo caller invoking this workflow
 # once per unit does not have one call cancel its siblings. Uses the RAW input because
@@ -184,6 +240,8 @@ jobs:
     with:
       runs-on: ${{ inputs.runs-on }}
       changed-files: ${{ needs.detect-changes.outputs.css-files }}
+      node-version: ${{ inputs.node-version }}
+      lint-command: ${{ inputs.lint-css-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   lint-js:
@@ -197,6 +255,8 @@ jobs:
     with:
       runs-on: ${{ inputs.runs-on }}
       changed-files: ${{ needs.detect-changes.outputs.js-files }}
+      node-version: ${{ inputs.node-version }}
+      lint-command: ${{ inputs.lint-js-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   lint-php:
@@ -211,6 +271,10 @@ jobs:
       runs-on: ${{ inputs.runs-on }}
       changed-files: ${{ needs.detect-changes.outputs.php-files }}
       enable-phpstan: ${{ inputs.enable-phpstan }}
+      php-version: ${{ inputs.php-version }}
+      composer-flags: ${{ inputs.composer-flags }}
+      phpcs-command: ${{ inputs.phpcs-command }}
+      phpstan-command: ${{ inputs.phpstan-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-js:
@@ -223,6 +287,9 @@ jobs:
     uses: ./.github/workflows/ci-test-js.yml
     with:
       runs-on: ${{ inputs.runs-on }}
+      node-version: ${{ inputs.node-version }}
+      test-command: ${{ inputs.test-js-command }}
+      enable-cache: ${{ inputs.test-js-cache }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-php:
@@ -247,6 +314,9 @@ jobs:
       php-version: ${{ matrix.php }}
       wp-version: ${{ matrix.wp }}
       use-wp-env: ${{ inputs.use-wp-env }}
+      node-version: ${{ inputs.node-version }}
+      test-command: ${{ inputs.test-php-command }}
+      composer-flags: ${{ inputs.composer-flags }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   build:
@@ -264,6 +334,11 @@ jobs:
       artifact-name: ${{ needs.validate-inputs.outputs.artifact-name }}
       artifact-path: ${{ inputs.build-artifact-path }}
       retention-days: 1
+      node-version: ${{ inputs.node-version }}
+      php-version: ${{ inputs.php-version }}
+      install-composer-deps: ${{ inputs.install-composer-deps }}
+      composer-flags: ${{ inputs.build-composer-flags }}
+      build-command: ${{ inputs.build-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   # Opt-in: runs only when build-artifact-path points at an installable dir, since the default
@@ -282,6 +357,8 @@ jobs:
       artifact-name: ${{ needs.validate-inputs.outputs.artifact-name }}
       slug: ${{ needs.validate-inputs.outputs.artifact-slug }}
       install-path: ${{ needs.validate-inputs.outputs.install-path }}
+      node-version: ${{ inputs.node-version }}
+      php-version: ${{ inputs.php-version }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   # Opt-in: a11y is slow and needs pa11y config, so it stays off unless run-a11y is set
@@ -297,6 +374,9 @@ jobs:
     uses: ./.github/workflows/ci-test-a11y.yml
     with:
       runs-on: ${{ inputs.runs-on }}
+      node-version: ${{ inputs.node-version }}
+      build-command: ${{ inputs.build-command }}
+      test-command: ${{ inputs.a11y-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   # Opt-in via gated-paths: fails a PR that commits build output, which is only correct where
