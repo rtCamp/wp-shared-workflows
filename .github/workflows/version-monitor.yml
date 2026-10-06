@@ -24,11 +24,9 @@ on:
         type: string
         default: ""
       wp-tooling-ref:
-        description: "Git ref of rtCamp/wp-tooling's npm/wp-tooling branch to install the CLI from. Defaults to a pinned commit; override to track the branch tip. Obsolete once the package is on npm."
+        description: "Version or range of @rtcamp/wp-tooling to run from npm. Leave empty for ^2."
         type: string
-        # npm/wp-tooling @ 2026-07-30. Pinned rather than tracking the branch tip so a change
-        # in that repo cannot alter what every consumer's CI executes with no change here.
-        default: "324e3a2ee59134de8dfddf36ba04ff2ca38e9afe"
+        default: ""
 
 # Serialise runs per consumer repo so a scheduled run and a manual dispatch can't
 # race on the same version-monitor/YYYY-MM branch.
@@ -63,19 +61,13 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # @rtcamp/wp-tooling is not on the npm registry yet, so it is installed from the
-        # npm/wp-tooling branch, which carries the package at its root. Installed into a
-        # job-local prefix put on PATH rather than globally.
-        # TODO(wp-tooling publish): swap the git ref for a semver range and drop wp-tooling-ref.
         shell: bash
         env:
-          WP_TOOLING_REF: ${{ inputs.wp-tooling-ref }}
+          WP_TOOLING_VERSION: ${{ inputs.wp-tooling-ref || '^2' }}
         run: |
           set -euo pipefail
-          prefix="$RUNNER_TEMP/wp-tooling"
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$prefix" \
-            "github:rtCamp/wp-tooling#${WP_TOOLING_REF}"
-          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect version updates
         id: detect
