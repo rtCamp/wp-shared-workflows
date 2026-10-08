@@ -91,6 +91,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 2
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
@@ -118,12 +119,18 @@ jobs:
         env:
           IGNORE_PATHS: ${{ inputs.ignore-paths }}
           BASE_REF: ${{ inputs.base-ref }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           args=(--output github --include-files)
           if [ -n "$IGNORE_PATHS" ]; then
             args+=(--ignore "$IGNORE_PATHS")
           fi
+          # Step-scoped git auth: the checkout persists no credentials.
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
           if [ -n "$BASE_REF" ]; then
             # The CLI does not fetch an explicit --base, and the shallow checkout rarely has it.
             if ! base="$(git rev-parse --verify -q "${BASE_REF}^{commit}")"; then
