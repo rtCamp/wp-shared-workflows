@@ -119,16 +119,18 @@ jobs:
         env:
           IGNORE_PATHS: ${{ inputs.ignore-paths }}
           BASE_REF: ${{ inputs.base-ref }}
-          # Git credentials for this step's fetches only; the checkout keeps none.
-          GIT_CONFIG_COUNT: 1
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           args=(--output github --include-files)
           if [ -n "$IGNORE_PATHS" ]; then
             args+=(--ignore "$IGNORE_PATHS")
           fi
+          # Step-scoped git auth: the checkout persists no credentials.
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
           if [ -n "$BASE_REF" ]; then
             # The CLI does not fetch an explicit --base, and the shallow checkout rarely has it.
             if ! base="$(git rev-parse --verify -q "${BASE_REF}^{commit}")"; then
