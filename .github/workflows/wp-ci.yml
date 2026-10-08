@@ -66,10 +66,9 @@ on:
         type: string
         default: ""
       wp-tooling-ref:
-        description: "Git ref of rtCamp/wp-tooling's npm/wp-tooling branch that detect-changes installs the CLI from. Defaults to a pinned commit; override to track the branch tip."
+        description: "Version or range of @rtcamp/wp-tooling that detect-changes runs from npm. Leave empty for ^2."
         type: string
-        # Keep in step with ci-detect-changes.yml's default.
-        default: "324e3a2ee59134de8dfddf36ba04ff2ca38e9afe"
+        default: ""
       gated-paths:
         description: >-
           Newline-separated path prefixes, relative to working-dir, whose contents must not be
