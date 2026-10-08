@@ -35,10 +35,7 @@ jobs:
           GATED_PATHS: ${{ inputs.gated-paths }}
           WORKING_DIR: ${{ inputs.working-dir }}
           BASE_REF: ${{ github.base_ref }}
-          # Git credentials for this step's fetch only; the checkout keeps none.
-          GIT_CONFIG_COUNT: 1
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -47,6 +44,11 @@ jobs:
             exit 0
           fi
 
+          # Step-scoped git auth: the checkout persists no credentials.
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
           git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
           PATTERN=$(printf '%s\n' "$GATED_PATHS" \
