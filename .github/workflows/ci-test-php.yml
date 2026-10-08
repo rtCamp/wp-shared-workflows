@@ -30,7 +30,7 @@ on:
         type: string
         default: ""
       composer-flags:
-        description: "Flags passed to composer install. Leave empty for '--no-interaction --prefer-dist --no-progress --no-scripts'."
+        description: "Flags passed to composer install. Leave empty for '--prefer-dist'. The root package's Composer scripts run; add --no-scripts to skip them."
         type: string
         default: ""
       working-dir:
@@ -57,6 +57,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Set up PHP
         uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
@@ -99,13 +101,10 @@ jobs:
           cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
 
       - name: Install Composer dependencies
-        shell: bash
-        env:
-          COMPOSER_FLAGS: ${{ inputs.composer-flags || '--no-interaction --prefer-dist --no-progress --no-scripts' }}
-        run: |
-          set -euo pipefail
-          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
-          composer install "${composer_args[@]}"
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
+        with:
+          working-directory: ${{ inputs.working-dir }}
+          composer-options: ${{ inputs.composer-flags || '--prefer-dist' }}
 
       - name: Install npm dependencies
         if: ${{ inputs.use-wp-env }}

@@ -26,7 +26,8 @@ on:
       composer-flags:
         description: >-
           Flags passed to composer install. Leave empty for '--no-dev --prefer-dist
-          --optimize-autoloader --no-progress --no-interaction --no-scripts'.
+          --optimize-autoloader'. The root package's Composer scripts run; add --no-scripts to
+          skip them.
         type: string
         default: ""
       build-command:
@@ -67,6 +68,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
 
       # Node version: the input, else .nvmrc (working-dir, then repo root), else 22.
       - name: Resolve Node.js version
@@ -109,13 +112,10 @@ jobs:
 
       - name: Install Composer dependencies
         if: ${{ inputs.install-composer-deps }}
-        shell: bash
-        env:
-          COMPOSER_FLAGS: ${{ inputs.composer-flags || '--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts' }}
-        run: |
-          set -euo pipefail
-          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
-          composer install "${composer_args[@]}"
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
+        with:
+          working-directory: ${{ inputs.working-dir }}
+          composer-options: ${{ inputs.composer-flags || '--no-dev --prefer-dist --optimize-autoloader' }}
 
       - name: Install npm dependencies
         if: ${{ inputs.install-node-deps }}
