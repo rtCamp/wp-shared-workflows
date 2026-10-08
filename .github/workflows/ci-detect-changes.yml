@@ -103,6 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          npm ls --prefix "$RUNNER_TEMP/wp-tooling" @rtcamp/wp-tooling
           echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect changed files
