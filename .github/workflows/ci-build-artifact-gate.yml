@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Detect committed build artifacts
         shell: bash
@@ -33,6 +35,10 @@ jobs:
           GATED_PATHS: ${{ inputs.gated-paths }}
           WORKING_DIR: ${{ inputs.working-dir }}
           BASE_REF: ${{ github.base_ref }}
+          # Git credentials for this step's fetch only; the checkout keeps none.
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
         run: |
           set -euo pipefail
 

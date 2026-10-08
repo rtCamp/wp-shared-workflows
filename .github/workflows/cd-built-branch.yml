@@ -59,9 +59,9 @@ on:
         type: string
         default: "8.3"
       composer-flags:
-        description: "Flags passed to composer install."
+        description: "Flags passed to composer install. The root package's Composer scripts run; add --no-scripts to skip them."
         type: string
-        default: "--no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction --no-scripts"
+        default: "--no-dev --prefer-dist --optimize-autoloader"
       build-command:
         description: "Shell command that produces the production build, run in each target's dir. Empty defaults to 'npm run build:prod'. Only run for targets that have a package-lock.json."
         type: string
@@ -129,6 +129,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           ref: ${{ inputs.source-ref != '' && inputs.source-ref || github.sha }}
+          persist-credentials: false
 
       - name: Resolve targets into a build matrix
         id: resolve
@@ -323,6 +324,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           ref: ${{ needs.discover.outputs.source-sha }}
+          persist-credentials: false
 
       - name: Set up PHP
         if: ${{ matrix.composer == 'true' }}
@@ -347,13 +349,10 @@ jobs:
 
       - name: Install Composer dependencies
         if: ${{ matrix.composer == 'true' }}
-        shell: bash
-        env:
-          COMPOSER_FLAGS: ${{ matrix.composer-flags }}
-        run: |
-          set -euo pipefail
-          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
-          composer install "${composer_args[@]}"
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
+        with:
+          working-directory: ${{ matrix.dir }}
+          composer-options: ${{ matrix.composer-flags }}
 
       - name: Install npm dependencies
         if: ${{ matrix.node == 'true' }}
