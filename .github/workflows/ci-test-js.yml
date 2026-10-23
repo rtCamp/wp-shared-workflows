@@ -53,7 +53,7 @@ jobs:
           # setup-node reads the file path from the repo root.
           if [ -n "$NODE_VERSION" ]; then
             echo "version=$NODE_VERSION" >> "$GITHUB_OUTPUT"
-          elif [ -s .nvmrc ]; then
+          elif [ -s "$GITHUB_WORKSPACE/$WORKING_DIR/.nvmrc" ]; then
             echo "file=$WORKING_DIR/.nvmrc" >> "$GITHUB_OUTPUT"
           elif [ -s "$GITHUB_WORKSPACE/.nvmrc" ]; then
             echo "file=.nvmrc" >> "$GITHUB_OUTPUT"
