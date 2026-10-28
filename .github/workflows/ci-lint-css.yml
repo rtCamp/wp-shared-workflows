@@ -54,7 +54,10 @@ jobs:
           # css-files also lists package.json and package-lock.json, so a dependency
           # change re-runs this job. Stylelint cannot parse them, and a dependency
           # change can affect every stylesheet, so lint the whole project then.
-          stylesheets=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.s?css$' || true)
+          # It can also name stylesheets the change deleted; Stylelint only gets files
+          # that still exist.
+          stylesheets=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.s?css$' \
+            | while IFS= read -r file; do [ ! -f "$file" ] || printf '%s\n' "$file"; done || true)
           others=$(printf '%s\n' "$CHANGED_FILES" | grep -vE '^$|\.s?css$' || true)
           if [ -n "$stylesheets" ] && [ -z "$others" ]; then
             printf '%s\n' "$stylesheets" | xargs -d '\n' --no-run-if-empty npx --no-install stylelint --

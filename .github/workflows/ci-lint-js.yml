@@ -12,7 +12,7 @@ on:
         type: string
         default: "npm run lint:js"
       changed-files:
-        description: "Newline-separated list of JS files to lint. Empty = run lint-command over the whole project."
+        description: "Newline-separated changed files (ci-detect-changes' js-files). Scripts that still exist are linted file by file; if the list is empty, holds only deleted scripts, or holds anything else (package.json, package-lock.json), lint-command runs over the whole project."
         type: string
         default: ""
       validate-package-json:
@@ -59,8 +59,15 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed-files }}
           LINT_COMMAND: ${{ inputs.lint-command }}
         run: |
-          if [ -n "$CHANGED_FILES" ]; then
-            printf '%s\n' "$CHANGED_FILES" | xargs -d '\n' --no-run-if-empty npx --no-install eslint --
+          # js-files can name scripts the change deleted, and ESLint exits 2 with
+          # "No files matching the pattern" for each one. It also lists package.json
+          # and package-lock.json, so a dependency change re-runs this job; a
+          # dependency change can affect every script, so lint the whole project then.
+          scripts=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.[cm]?[jt]sx?$' \
+            | while IFS= read -r file; do [ ! -f "$file" ] || printf '%s\n' "$file"; done || true)
+          others=$(printf '%s\n' "$CHANGED_FILES" | grep -vE '^$|\.[cm]?[jt]sx?$' || true)
+          if [ -n "$scripts" ] && [ -z "$others" ]; then
+            printf '%s\n' "$scripts" | xargs -d '\n' --no-run-if-empty npx --no-install eslint --
           else
             bash -eo pipefail -c "$LINT_COMMAND"
           fi
