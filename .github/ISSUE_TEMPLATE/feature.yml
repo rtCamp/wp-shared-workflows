@@ -1,0 +1,67 @@
+name: Feature request
+description: Suggest a new input, output, workflow or behaviour.
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for the suggestion. Please search
+        [existing issues](https://github.com/rtCamp/wp-shared-workflows/issues?q=is%3Aissue)
+        first.
+  - type: markdown
+    attributes:
+      value: >-
+        A tagged workflow's inputs, secrets and outputs are public API: every
+        caller pinned at `@v1` picks up a change on its next run. Within v1, new
+        inputs must be optional; removing, renaming or newly requiring one waits
+        for the next major. Logic that needs a real language belongs in
+        [`@rtcamp/wp-tooling`](https://github.com/rtCamp/wp-tooling).
+        [CONTRIBUTING.md](https://github.com/rtCamp/wp-shared-workflows/blob/main/CONTRIBUTING.md)
+        explains how to build it yourself.
+  - type: input
+    id: workflow
+    attributes:
+      label: Workflow file
+      description: The workflow you want to change, or "new workflow".
+      placeholder: ci-test-php.yml
+    validations:
+      required: false
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What you are trying to do in your caller workflow, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: The inputs, outputs or steps you have in mind. A sketch of the caller's `with:` block helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use now, or other designs you ruled out.
+    validations:
+      required: false
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: How the change affects callers pinned at `@v1`.
+      options:
+        - "Additive: a new optional input, output or workflow"
+        - "Breaking: renames, removes or newly requires an input, secret or output"
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
