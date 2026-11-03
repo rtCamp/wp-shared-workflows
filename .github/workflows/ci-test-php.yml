@@ -30,7 +30,7 @@ on:
         type: string
         default: ""
       composer-flags:
-        description: "Flags passed to composer install. Leave empty for '--prefer-dist'. The root package's Composer scripts run; add --no-scripts to skip them."
+        description: "Flags passed to composer install. Leave empty for '--prefer-dist --no-scripts'; pass your own flags to run Composer scripts."
         type: string
         default: ""
       working-dir:
@@ -104,7 +104,7 @@ jobs:
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
         with:
           working-directory: ${{ inputs.working-dir }}
-          composer-options: ${{ inputs.composer-flags || '--prefer-dist' }}
+          composer-options: ${{ inputs.composer-flags || '--prefer-dist --no-scripts' }}
 
       - name: Install npm dependencies
         if: ${{ inputs.use-wp-env }}

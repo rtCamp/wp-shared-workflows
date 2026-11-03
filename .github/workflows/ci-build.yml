@@ -26,8 +26,7 @@ on:
       composer-flags:
         description: >-
           Flags passed to composer install. Leave empty for '--no-dev --prefer-dist
-          --optimize-autoloader'. The root package's Composer scripts run; add --no-scripts to
-          skip them.
+          --optimize-autoloader --no-scripts'; pass your own flags to run Composer scripts.
         type: string
         default: ""
       build-command:
@@ -115,7 +114,7 @@ jobs:
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
         with:
           working-directory: ${{ inputs.working-dir }}
-          composer-options: ${{ inputs.composer-flags || '--no-dev --prefer-dist --optimize-autoloader' }}
+          composer-options: ${{ inputs.composer-flags || '--no-dev --prefer-dist --optimize-autoloader --no-scripts' }}
 
       - name: Install npm dependencies
         if: ${{ inputs.install-node-deps }}

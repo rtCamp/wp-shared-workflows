@@ -59,9 +59,9 @@ on:
         type: string
         default: "8.3"
       composer-flags:
-        description: "Flags passed to composer install. The root package's Composer scripts run; add --no-scripts to skip them."
+        description: "Flags passed to composer install. Drop --no-scripts to run Composer scripts."
         type: string
-        default: "--no-dev --prefer-dist --optimize-autoloader"
+        default: "--no-dev --prefer-dist --optimize-autoloader --no-scripts"
       build-command:
         description: "Shell command that produces the production build, run in each target's dir. Empty defaults to 'npm run build:prod'. Only run for targets that have a package-lock.json."
         type: string
