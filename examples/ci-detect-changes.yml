@@ -28,3 +28,4 @@ jobs:
     with:
       working-dir: plugins/acme-blocks
       changed-files: ${{ needs.detect.outputs.js-files }}
+      lint-files-command: npm run lint:js:files

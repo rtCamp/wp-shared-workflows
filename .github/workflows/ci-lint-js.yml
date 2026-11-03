@@ -12,16 +12,23 @@ on:
         type: string
         default: ""
       lint-command:
+        description: "Shell command that lints the whole project, as developers run it locally. Leave empty for 'npm run lint:js'."
+        type: string
+        default: ""
+      lint-files-command:
         description: >-
-          Shell command that runs ESLint. The changed files are appended as arguments, so a custom
-          command must pass them on, as npm run does. Leave empty for 'npm run lint:js'.
+          Shell command that lints only the files passed to it as arguments, such as
+          'npm run lint:js:files'. Set it to lint just the changed JS files; leave it empty to
+          always run lint-command.
         type: string
         default: ""
       changed-files:
         description: >-
-          Newline-separated changed files (ci-detect-changes' js-files). Only JS files that still
-          exist are linted, and a list with nothing to lint (deleted files, Jest snapshots) skips
-          ESLint. No list, or a change to package.json or package-lock.json, lints the whole project.
+          Newline-separated changed files (ci-detect-changes' js-files). When lint-files-command is
+          set and every path is a JS file that still exists, only those files are linted. A removed
+          file, package.json, package-lock.json or an ESLint, Prettier or Babel config lints the
+          whole project with lint-command, since it can break files the change did not touch. Jest
+          snapshots alone skip ESLint.
         type: string
         default: ""
       validate-package-json:
@@ -89,19 +96,46 @@ jobs:
         env:
           CHANGED_FILES: ${{ inputs.changed-files }}
           LINT_COMMAND: ${{ inputs.lint-command || 'npm run lint:js' }}
+          LINT_FILES_COMMAND: ${{ inputs.lint-files-command }}
         run: |
-          set -eo pipefail
-          # Lint only the changed JS files that still exist; "./" keeps a name like -x.js a path.
-          # No list, or a package.json/lockfile change, lints the whole project.
-          scripts=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.[cm]?[jt]sx?$' \
-            | while IFS= read -r file; do [ ! -f "$file" ] || printf './%s\n' "$file"; done || true)
-          others=$(printf '%s\n' "$CHANGED_FILES" | grep -vE '^$|\.[cm]?[jt]sx?$|\.snap$' || true)
+          set -euo pipefail
+
+          # A removed file, package.json, the lockfile or a lint config can break files the change
+          # did not touch, so any of them lints the whole project. "./" keeps -x.js a path.
+          source_pattern='\.(js|cjs|mjs|ts|cts|mts|jsx|tsx)$'
+          config_pattern='(^|/)(eslint\.config|prettier\.config|babel\.config|\.eslintrc|\.prettierrc|\.babelrc)\.[^/]+$'
+
           files=()
-          if [ -n "$CHANGED_FILES" ] && [ -z "$others" ]; then
-            if [ -z "$scripts" ]; then
-              echo "::notice::Nothing to lint: the changed JS files were deleted or are Jest snapshots."
-              exit 0
+          full_lint_reason=""
+
+          while IFS= read -r file; do
+            [[ -n "$file" ]] || continue
+            [[ "$file" != *.snap ]] || continue
+
+            if [[ ! -f "$file" ]]; then
+              full_lint_reason="$file was removed"
+              break
             fi
-            mapfile -t files <<< "$scripts"
+
+            if [[ ! "$file" =~ $source_pattern ]] || [[ "$file" =~ $config_pattern ]]; then
+              full_lint_reason="$file changed"
+              break
+            fi
+
+            files+=("./$file")
+          done <<< "$CHANGED_FILES"
+
+          if [[ -n "$CHANGED_FILES" && -z "$full_lint_reason" && ${#files[@]} -eq 0 ]]; then
+            echo "::notice::Nothing to lint: only Jest snapshots changed."
+            exit 0
           fi
-          bash -eo pipefail -c "$LINT_COMMAND \"\$@\"" _ "${files[@]}"
+
+          if [[ -n "$LINT_FILES_COMMAND" && -z "$full_lint_reason" && ${#files[@]} -gt 0 ]]; then
+            bash -eo pipefail -c "$LINT_FILES_COMMAND \"\$@\"" _ "${files[@]}"
+          else
+            if [[ -n "$full_lint_reason" ]]; then
+              echo "::notice::Linting the whole project: $full_lint_reason."
+            fi
+
+            bash -eo pipefail -c "$LINT_COMMAND"
+          fi

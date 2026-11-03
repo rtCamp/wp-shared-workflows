@@ -13,4 +13,5 @@ jobs:
       working-dir: plugins/acme-blocks
       node-version: "22"
       lint-command: npm run lint:js
+      lint-files-command: npm run lint:js:files
       validate-package-json: true

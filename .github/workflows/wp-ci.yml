@@ -102,11 +102,19 @@ on:
         type: string
         default: ""
       lint-css-command:
-        description: "Shell command that runs Stylelint; changed stylesheets are appended as arguments. Leave empty for ci-lint-css.yml's default."
+        description: "Shell command that runs Stylelint over the whole project. Leave empty for ci-lint-css.yml's default."
+        type: string
+        default: ""
+      lint-css-files-command:
+        description: "Shell command that runs Stylelint on the stylesheets passed to it, to lint only the changed ones. Leave empty to always lint the whole project."
         type: string
         default: ""
       lint-js-command:
-        description: "Shell command that runs ESLint; changed JS files are appended as arguments. Leave empty for ci-lint-js.yml's default."
+        description: "Shell command that runs ESLint over the whole project. Leave empty for ci-lint-js.yml's default."
+        type: string
+        default: ""
+      lint-js-files-command:
+        description: "Shell command that runs ESLint on the files passed to it, to lint only the changed JS files. Leave empty to always lint the whole project."
         type: string
         default: ""
       phpcs-command:
@@ -242,6 +250,7 @@ jobs:
       changed-files: ${{ needs.detect-changes.outputs.css-files }}
       node-version: ${{ inputs.node-version }}
       lint-command: ${{ inputs.lint-css-command }}
+      lint-files-command: ${{ inputs.lint-css-files-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   lint-js:
@@ -257,6 +266,7 @@ jobs:
       changed-files: ${{ needs.detect-changes.outputs.js-files }}
       node-version: ${{ inputs.node-version }}
       lint-command: ${{ inputs.lint-js-command }}
+      lint-files-command: ${{ inputs.lint-js-files-command }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   lint-php:
