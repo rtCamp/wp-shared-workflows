@@ -65,17 +65,20 @@ jobs:
 - Leaves that run project code take Node from `node-version`, else `.nvmrc` in `working-dir`, else the repo root's `.nvmrc`, else 22. `ci-detect-changes.yml` and `version-monitor.yml` run wp-tooling, not project code, so they keep a fixed version.
 - Caller values reach a `run:` body through step `env:`, never through `${{ }}` interpolation. `bin/check-workflows.sh` enforces this — interpolation is still fine in `env:`, `with:` and `if:`, which are not shell. Two shapes:
 
-**Value inputs** (`composer-flags`, `phpstan-level`, `changed-files`) become argv, so shell metacharacters stay literal:
+**Value inputs** (`ignore-paths`, `phpstan-level`, `changed-files`) become argv, so shell metacharacters stay literal:
 
 ```yaml
-      - name: Install Composer dependencies
+      - name: Detect changed files
         shell: bash
         env:
-          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+          IGNORE_PATHS: ${{ inputs.ignore-paths }}
         run: |
           set -euo pipefail
-          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
-          composer install "${composer_args[@]}"
+          args=(--output github --include-files)
+          if [ -n "$IGNORE_PATHS" ]; then
+            args+=(--ignore "$IGNORE_PATHS")
+          fi
+          wp-tooling detect-changes "${args[@]}"
 ```
 
 **Command inputs** (`build-command`, `test-command`, `*-command`) *are* shell — running them is the contract, not a leak. Routing them through `env:` stops render-time splicing, where a newline in the value injects extra lines into the generated script and a quote corrupts the command after it:

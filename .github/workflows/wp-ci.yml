@@ -62,7 +62,7 @@ on:
         type: string
         default: ""
       base-ref:
-        description: "Explicit git ref detect-changes diffs HEAD against. Empty lets the CLI resolve it from the PR base or push event."
+        description: "Explicit git ref detect-changes diffs HEAD against. Empty resolves it from the pull request base or the push event."
         type: string
         default: ""
       wp-tooling-ref:
