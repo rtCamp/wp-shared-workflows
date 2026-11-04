@@ -27,10 +27,9 @@ on:
         type: string
         default: "."
       wp-tooling-ref:
-        description: "Git ref of rtCamp/wp-tooling's npm/wp-tooling branch to install the CLI from. Defaults to a pinned commit; override to track the branch tip. Obsolete once the package is on npm."
+        description: "Version or range of @rtcamp/wp-tooling to run from npm. Leave empty for ^2."
         type: string
-        # npm/wp-tooling @ 2026-07-30. Pinned so that branch moving cannot change what CI runs.
-        default: "324e3a2ee59134de8dfddf36ba04ff2ca38e9afe"
+        default: ""
     outputs:
       total-count:
         description: >-
@@ -98,19 +97,14 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # @rtcamp/wp-tooling is not on the npm registry yet, so it is installed from the
-        # npm/wp-tooling branch, which carries the package at its root. Installed into a
-        # job-local prefix put on PATH rather than globally.
-        # TODO(wp-tooling publish): swap the git ref for a semver range and drop wp-tooling-ref.
         shell: bash
         env:
-          WP_TOOLING_REF: ${{ inputs.wp-tooling-ref }}
+          WP_TOOLING_VERSION: ${{ inputs.wp-tooling-ref || '^2' }}
         run: |
           set -euo pipefail
-          prefix="$RUNNER_TEMP/wp-tooling"
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$prefix" \
-            "github:rtCamp/wp-tooling#${WP_TOOLING_REF}"
-          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          npm ls --prefix "$RUNNER_TEMP/wp-tooling" @rtcamp/wp-tooling
+          echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Detect changed files
         id: detect
@@ -120,7 +114,7 @@ jobs:
           BASE_REF: ${{ inputs.base-ref }}
         run: |
           set -euo pipefail
-          args=(--output github --include-files)
+          args=(--strict --output github --include-files)
           if [ -n "$IGNORE_PATHS" ]; then
             args+=(--ignore "$IGNORE_PATHS")
           fi
@@ -133,16 +127,7 @@ jobs:
             fi
             args+=(--base "$base")
           fi
-          # The CLI reports zero changes when git diff fails; fail instead of skipping every job.
-          err="$RUNNER_TEMP/detect-changes.stderr"
-          status=0
-          wp-tooling detect-changes "${args[@]}" 2>"$err" || status=$?
-          cat "$err" >&2
-          if grep -q 'git diff failed' "$err"; then
-            echo "::error::detect-changes could not diff against its base, so it cannot tell what changed. Failing instead of skipping every job."
-            exit 1
-          fi
-          exit "$status"
+          wp-tooling detect-changes "${args[@]}"
 
       # The detector emits repo-root-relative paths but the linters run with cwd = working-dir,
       # so an unscoped list resolves to <dir>/<dir>/<file>. At working-dir '.' this is a pure
