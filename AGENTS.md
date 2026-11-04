@@ -118,7 +118,7 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 - `actionlint` shells out to whatever `shellcheck` is on `PATH`, and rule behaviour differs between shellcheck releases — a local pass does not guarantee a CI pass. Write shell that is clean on older versions too: prefer `guard || continue` and explicit `if` blocks over `A && B || C`, which SC2015 flags on shellcheck 0.10 and earlier.
 - A green `bin/check-workflows.sh` proves input *names* are right, not input *values*. A wrong `build-command` or `artifact-path` only surfaces in a real consumer run.
 - Never hand-edit `CHANGELOG.md` or `.release-please-manifest.json`, and never push a `v*` tag by hand; release-please owns all three. To fix an entry, edit the open release PR.
-- `cd-github-release.yml` extracts release notes by matching a version heading in `CHANGELOG.md`, and deliberately fails rather than publishing empty notes. Cut `## Unreleased` to `## vX.Y.Z - YYYY-MM-DD` before tagging.
+- `cd-github-release.yml` extracts release notes by matching the version heading that release-please writes to `CHANGELOG.md` in the generated release PR, and deliberately fails rather than publishing empty notes. If the heading or notes are wrong, update the open release PR; tagging is performed by the release automation.
 - Consumers pin `@v1`, never a branch such as `@release/v1.0.0`. A moving ref has already broken real consumer runs mid-change.
 
 ## PR instructions
