@@ -4,6 +4,16 @@ All notable changes to `@rtcamp/wp-shared-workflows` are documented in this file
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `ci-lint-js.yml` and `ci-lint-css.yml` take a `lint-files-command` (`wp-ci.yml`: `lint-js-files-command`, `lint-css-files-command`) that lints only the files passed to it, such as `npm run lint:js:files`. When it is set and every changed path is an existing JS file or stylesheet, only those files are linted. Left empty, the default, every run lints the whole project with `lint-command`.
+
+### Changed
+
+- `ci-lint-js.yml` and `ci-lint-css.yml` no longer pass deleted files to the linter, which failed any change that removed a JS or SCSS file. A removed file, `package.json`, `package-lock.json` or a lint config now lints the whole project with `lint-command`, since any of them can break files the change did not touch: ESLint, Prettier and Babel configs for `ci-lint-js.yml`, and Stylelint configs and `.stylelintignore` for `ci-lint-css.yml`. A `::notice::` names the file that triggered it. `lint-command` is the whole-project command again and no longer receives file arguments.
+
 ## v1.0.0 - 2026-10-01
 
 First tagged release. Consumers pin `@v1`.

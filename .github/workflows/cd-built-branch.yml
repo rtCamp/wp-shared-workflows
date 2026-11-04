@@ -51,9 +51,9 @@ on:
         type: string
         default: ""
       node-version:
-        description: "Default Node.js version for every target, overridable per target."
+        description: "Default Node.js version for every target, overridable per target. Leave empty to read the target's .nvmrc, then the repo root's, falling back to 22."
         type: string
-        default: "22"
+        default: ""
       php-version:
         description: "Default PHP version for every target, overridable per target."
         type: string
@@ -230,6 +230,13 @@ jobs:
 
             php_version="$(jq -r --arg d "$INPUT_PHP_VERSION" '.["php-version"] // $d' <<<"$item")"
             node_version="$(jq -r --arg d "$INPUT_NODE_VERSION" '.["node-version"] // $d' <<<"$item")"
+            node_version_file=""
+            if [ -z "$node_version" ]; then
+              if [ -s "$dir/.nvmrc" ]; then node_version_file="$dir/.nvmrc"
+              elif [ -s .nvmrc ]; then node_version_file=".nvmrc"
+              else node_version="22"
+              fi
+            fi
             composer_flags="$(jq -r --arg d "$INPUT_COMPOSER_FLAGS" '.["composer-flags"] // $d' <<<"$item")"
             build_command="$(jq -r --arg d "$INPUT_BUILD_COMMAND" '.["build-command"] // $d' <<<"$item")"
             [ -n "$build_command" ] || build_command="npm run build:prod"
@@ -254,12 +261,12 @@ jobs:
             entry="$(jq -nc \
               --arg name "$name" --arg dir "$dir" \
               --arg composer "$composer" --arg node "$node" \
-              --arg php "$php_version" --arg nodever "$node_version" \
+              --arg php "$php_version" --arg nodever "$node_version" --arg nodefile "$node_version_file" \
               --arg cflags "$composer_flags" --arg bcmd "$build_command" \
               --arg lock "${dir%/}/package-lock.json" \
               --arg pp "$publish_abs" --arg vp "$verify_abs" \
               '{name:$name, dir:$dir, composer:$composer, node:$node,
-                "php-version":$php, "node-version":$nodever,
+                "php-version":$php, "node-version":$nodever, "node-version-file":$nodefile,
                 "composer-flags":$cflags, "build-command":$bcmd,
                 lockfile:$lock, "publish-paths":$pp, "verify-paths":$vp}')"
             items="$(jq -c --argjson e "$entry" '. + [$e]' <<<"$items")"
@@ -332,6 +339,7 @@ jobs:
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: ${{ matrix.node-version }}
+          node-version-file: ${{ matrix.node-version-file }}
           cache: npm
           # setup-node is a JS action and ignores defaults.run.working-directory, so without
           # this it looks for the lockfile at the repo root.
