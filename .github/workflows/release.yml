@@ -58,7 +58,7 @@ jobs:
           set -euo pipefail
           for tag in "v${MAJOR}" "v${MAJOR}.${MINOR}"; do
             if gh api "repos/${REPO}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-              gh api -X PATCH "repos/${REPO}/git/refs/tags/${tag}" -f sha="$SHA" -f force=true >/dev/null
+              gh api -X PATCH "repos/${REPO}/git/refs/tags/${tag}" -f sha="$SHA" -F force=true >/dev/null
             else
               gh api -X POST "repos/${REPO}/git/refs" -f ref="refs/tags/${tag}" -f sha="$SHA" >/dev/null
             fi
