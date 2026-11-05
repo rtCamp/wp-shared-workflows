@@ -48,14 +48,14 @@ caller at your branch.
 
 ## Pull request checklist
 
-- [ ] Branch is `<version>/task/<kebab-slug>`, based on `main`.
+- [ ] Branch is based on `main` and named `<type>/<kebab-slug>`, e.g. `fix/runs-on-input`.
 - [ ] The three commands above pass locally.
 - [ ] Every new or changed input has a `description:`.
 - [ ] `examples/<workflow>.yml` added or updated to match.
-- [ ] `CHANGELOG.md` entry added under the current version heading.
+- [ ] PR title is a [Conventional Commit](https://www.conventionalcommits.org/) (`fix:`, `feat:`, `feat!:` for a breaking change) with the changelog entry.
 - [ ] Breaking changes to an input surface are called out in the PR description.
 - [ ] Smoke-tested against a consumer repo, or explicitly noted why not.
-- [ ] Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
+- [ ] PRs are squash-merged to `main`.
 
 ## License
 

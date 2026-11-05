@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize runs so two merges in quick succession can't race on the release PR or the alias tags.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
+      major: ${{ steps.release.outputs.major }}
+      minor: ${{ steps.release.outputs.minor }}
+    steps:
+      - name: Prepare release
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Consumers pin @vX or @vX.Y (see README "Versioning"). release-please only creates the exact
+  # vX.Y.Z tag, so move both aliases onto the release commit.
+  move-alias-tags:
+    name: Move major and minor alias tags
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Point vX and vX.Y at the release commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.release-please.outputs.sha }}
+          MAJOR: ${{ needs.release-please.outputs.major }}
+          MINOR: ${{ needs.release-please.outputs.minor }}
+        run: |
+          set -euo pipefail
+          for tag in "v${MAJOR}" "v${MAJOR}.${MINOR}"; do
+            if gh api "repos/${REPO}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+              gh api -X PATCH "repos/${REPO}/git/refs/tags/${tag}" -f sha="$SHA" -F force=true >/dev/null
+            else
+              gh api -X POST "repos/${REPO}/git/refs" -f ref="refs/tags/${tag}" -f sha="$SHA" >/dev/null
+            fi
+            echo "${tag} -> ${SHA}"
+          done
