@@ -13,3 +13,4 @@ jobs:
       working-dir: plugins/acme-blocks
       node-version: "22"
       lint-command: npm run lint:css
+      lint-files-command: npm run lint:css:files

@@ -16,7 +16,7 @@ on:
         type: string
         default: ""
       base-ref:
-        description: "Explicit git ref to diff HEAD against. Empty lets the CLI resolve it from the PR base or push event."
+        description: "Explicit git ref to diff HEAD against. Empty resolves it from the pull request base or the push event."
         type: string
         default: ""
       working-dir:
@@ -27,10 +27,9 @@ on:
         type: string
         default: "."
       wp-tooling-ref:
-        description: "Git ref of rtCamp/wp-tooling's npm/wp-tooling branch to install the CLI from. Defaults to a pinned commit; override to track the branch tip. Obsolete once the package is on npm."
+        description: "Version or range of @rtcamp/wp-tooling to run from npm. Leave empty for ^2."
         type: string
-        # npm/wp-tooling @ 2026-07-30. Pinned so that branch moving cannot change what CI runs.
-        default: "324e3a2ee59134de8dfddf36ba04ff2ca38e9afe"
+        default: ""
     outputs:
       total-count:
         description: >-
@@ -91,6 +90,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 2
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
@@ -98,51 +98,86 @@ jobs:
           node-version: ${{ inputs.node-version }}
 
       - name: Install wp-tooling
-        # @rtcamp/wp-tooling is not on the npm registry yet, so it is installed from the
-        # npm/wp-tooling branch, which carries the package at its root. Installed into a
-        # job-local prefix put on PATH rather than globally.
-        # TODO(wp-tooling publish): swap the git ref for a semver range and drop wp-tooling-ref.
         shell: bash
         env:
-          WP_TOOLING_REF: ${{ inputs.wp-tooling-ref }}
+          WP_TOOLING_VERSION: ${{ inputs.wp-tooling-ref || '^2' }}
         run: |
           set -euo pipefail
-          prefix="$RUNNER_TEMP/wp-tooling"
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$prefix" \
-            "github:rtCamp/wp-tooling#${WP_TOOLING_REF}"
-          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          npm ls --prefix "$RUNNER_TEMP/wp-tooling" @rtcamp/wp-tooling
+          echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
+
+      # The CLI fetches its own base unless given --base, so resolving it here keeps the token out
+      # of the CLI's environment.
+      - name: Resolve diff base
+        id: base
+        shell: bash
+        env:
+          BASE_REF: ${{ inputs.base-ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Keyed on the server URL so GHES and ghe.com hosts match too.
+          fetch() {
+            local auth
+            auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            echo "::add-mask::$auth"
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.${GITHUB_SERVER_URL}/.extraheader" \
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+              git fetch --no-tags --depth=1 origin "$1"
+          }
+
+          if [ -n "$BASE_REF" ]; then
+            if ! base="$(git rev-parse --verify -q "${BASE_REF}^{commit}")"; then
+              fetch "${BASE_REF#origin/}" ||
+                { echo "::error::base-ref '$BASE_REF' could not be fetched from origin"; exit 1; }
+              base="$(git rev-parse FETCH_HEAD)"
+            fi
+          elif [ -n "${GITHUB_BASE_REF:-}" ]; then
+            # Two parents alone prove nothing: pull_request_target checks out the base branch,
+            # whose tip can be a merge commit too.
+            head_parent="$(git rev-parse -q --verify 'HEAD^2^{commit}' || true)"
+            if [[ "$EVENT_NAME" != "pull_request" || "$GITHUB_REF" != refs/pull/*/merge ||
+                  -z "$PR_HEAD_SHA" || "$head_parent" != "$PR_HEAD_SHA" ]]; then
+              echo "::error::Not a pull_request merge checkout (event '${EVENT_NAME}', ref '${GITHUB_REF}'); no PR changes to detect."
+              exit 1
+            fi
+            base="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          elif [ -n "$PUSH_BEFORE" ] && [[ ! "$PUSH_BEFORE" =~ ^0+$ ]]; then
+            if ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+              fetch "$PUSH_BEFORE" ||
+                { echo "::error::Could not fetch the push's previous commit ${PUSH_BEFORE}; pass base-ref."; exit 1; }
+            fi
+            base="$PUSH_BEFORE"
+          elif ! base="$(git rev-parse --verify -q 'HEAD~1^{commit}')"; then
+            # A shallow checkout hides parents, so read them from the raw commit.
+            commit="$(git cat-file commit HEAD)"
+            if [[ "${commit%%$'\n\n'*}" == *$'\n'parent\ * ]]; then
+              echo "::error::HEAD's parent is missing from the checkout; pass base-ref."
+              exit 1
+            fi
+            base="$(git hash-object -t tree /dev/null)"
+            echo "::notice::HEAD is a root commit, so every file in it counts as changed."
+          fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
 
       - name: Detect changed files
         id: detect
         shell: bash
         env:
           IGNORE_PATHS: ${{ inputs.ignore-paths }}
-          BASE_REF: ${{ inputs.base-ref }}
+          BASE: ${{ steps.base.outputs.sha }}
         run: |
           set -euo pipefail
-          args=(--output github --include-files)
+          args=(--strict --output github --include-files --base "$BASE")
           if [ -n "$IGNORE_PATHS" ]; then
             args+=(--ignore "$IGNORE_PATHS")
           fi
-          if [ -n "$BASE_REF" ]; then
-            # The CLI does not fetch an explicit --base, and the shallow checkout rarely has it.
-            if ! base="$(git rev-parse --verify -q "${BASE_REF}^{commit}")"; then
-              git fetch --no-tags --depth=1 origin "${BASE_REF#origin/}" ||
-                { echo "::error::base-ref '$BASE_REF' could not be fetched from origin"; exit 1; }
-              base="$(git rev-parse FETCH_HEAD)"
-            fi
-            args+=(--base "$base")
-          fi
-          # The CLI reports zero changes when git diff fails; fail instead of skipping every job.
-          err="$RUNNER_TEMP/detect-changes.stderr"
-          status=0
-          wp-tooling detect-changes "${args[@]}" 2>"$err" || status=$?
-          cat "$err" >&2
-          if grep -q 'git diff failed' "$err"; then
-            echo "::error::detect-changes could not diff against its base, so it cannot tell what changed. Failing instead of skipping every job."
-            exit 1
-          fi
-          exit "$status"
+          wp-tooling detect-changes "${args[@]}"
 
       # The detector emits repo-root-relative paths but the linters run with cwd = working-dir,
       # so an unscoped list resolves to <dir>/<dir>/<file>. At working-dir '.' this is a pure

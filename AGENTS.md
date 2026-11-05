@@ -63,19 +63,24 @@ jobs:
 - 2-space indent, `kebab-case` input names, a `description:` on every input, a `name:` on every job and step. `bin/check-workflows.sh` enforces all four.
 - Third-party actions pinned to a commit SHA with a trailing `# vX.Y.Z` comment.
 - Every job in a reusable workflow runs on `runs-on: ${{ fromJSON(inputs.runs-on) }}`, from a `runs-on` input that defaults to `'"ubuntu-latest"'`, and `wp-ci.yml` and `wp-cd.yml` forward it to every leaf. A reusable workflow's jobs run in the caller's repo: a public repo cannot use rtCamp's self-hosted runners, and rtCamp policy puts private repos on them, so the caller chooses (`'["self-hosted"]'` for private repos). This repo's own CI (`ci-self-check.yml`) runs on `ubuntu-latest` because the repo is public. `bin/check-workflows.sh` enforces all three. On self-hosted, pass plain `["self-hosted"]`: every pool it reached in testing was linux-x64, and the pinned binaries this repo downloads are x86_64.
+- `wp-ci.yml` forwards leaf inputs, and GitHub passes an empty string through instead of falling back to the called workflow's default. So a forwarded string input defaults to `""` in `wp-ci.yml`, and the leaf turns `""` into its own default, written once, in the leaf. Booleans repeat the leaf's default.
+- Leaves that run project code take Node from `node-version`, else `.nvmrc` in `working-dir`, else the repo root's `.nvmrc`, else 22. `ci-detect-changes.yml` and `version-monitor.yml` run wp-tooling, not project code, so they keep a fixed version.
 - Caller values reach a `run:` body through step `env:`, never through `${{ }}` interpolation. `bin/check-workflows.sh` enforces this — interpolation is still fine in `env:`, `with:` and `if:`, which are not shell. Two shapes:
 
-**Value inputs** (`composer-flags`, `phpstan-level`, `changed-files`) become argv, so shell metacharacters stay literal:
+**Value inputs** (`ignore-paths`, `phpstan-level`, `changed-files`) become argv, so shell metacharacters stay literal:
 
 ```yaml
-      - name: Install Composer dependencies
+      - name: Detect changed files
         shell: bash
         env:
-          COMPOSER_FLAGS: ${{ inputs.composer-flags }}
+          IGNORE_PATHS: ${{ inputs.ignore-paths }}
         run: |
           set -euo pipefail
-          read -r -a composer_args <<< "$COMPOSER_FLAGS" || true
-          composer install "${composer_args[@]}"
+          args=(--output github --include-files)
+          if [ -n "$IGNORE_PATHS" ]; then
+            args+=(--ignore "$IGNORE_PATHS")
+          fi
+          wp-tooling detect-changes "${args[@]}"
 ```
 
 **Command inputs** (`build-command`, `test-command`, `*-command`) *are* shell — running them is the contract, not a leak. Routing them through `env:` stops render-time splicing, where a newline in the value injects extra lines into the generated script and a quote corrupts the command after it:
@@ -113,12 +118,12 @@ Use `bash -eo pipefail -c`, never bare `bash -c`: `-e` is not inherited, so a ba
 
 - `working-dir` carries three different meanings. On the CI leaves it is a real working directory — tools install and run inside it. On `ci-detect-changes.yml` it is a **path scope**: the diff is always taken from the repository root, then the CSS/JS/PHP lists are filtered and re-rooted, while `total-count`, `ignored-count` and the `gha-*` outputs stay repo-wide. On `cd-github-release.yml` and `cd-wp-org.yml` it is a **path prefix** for source files they read (`changelog-path`, `assets-path`); the deployed files come from the artifact, and `wp-cd.yml` forwards it to both unchanged. `cd-built-branch.yml` scopes per entry in its `targets` JSON array, and `cd-s3.yml` by the artifact it downloads.
 - `actions/download-artifact` only sees the current run. Anything consuming a build artifact must run in the same workflow as the `ci-build` job that produced it, wired with `needs:`.
-- The default `wp-tooling-ref` SHA is duplicated in `ci-detect-changes.yml`, `wp-ci.yml` and `version-monitor.yml`. Changing one without the others silently splits behaviour across jobs.
+- `ci-detect-changes.yml` and `version-monitor.yml` both run wp-tooling `^2` by default. Move them together on a new wp-tooling major.
 - The self-hosted runners are ARC pods on Ubuntu 24.04 x64 with a minimal image, not GitHub's `ubuntu-latest`. They have `git`, `curl`, `jq`, `zip`, `rsync`, `python3`, `gh` and `docker`, but no Docker Compose v2, `yq`, `pip`, `aws` or `svn`, and no Node or PHP until `setup-node`/`setup-php` run. wp-env needs Compose v2, so jobs that boot wp-env fail on these runners until the image or the workflow provides it. `/usr/local/bin` needs `sudo`, which is passwordless. Install what a step needs, pinned and checksum-verified, as `ci-self-check.yml` does for `actionlint` and `yq` and `cd-s3.yml` does for the AWS CLI. apt's `yq` is kislyuk's jq wrapper, not the mikefarah `yq` this repo uses.
 - `actionlint` shells out to whatever `shellcheck` is on `PATH`, and rule behaviour differs between shellcheck releases — a local pass does not guarantee a CI pass. Write shell that is clean on older versions too: prefer `guard || continue` and explicit `if` blocks over `A && B || C`, which SC2015 flags on shellcheck 0.10 and earlier.
 - A green `bin/check-workflows.sh` proves input *names* are right, not input *values*. A wrong `build-command` or `artifact-path` only surfaces in a real consumer run.
 - Never hand-edit `CHANGELOG.md` or `.release-please-manifest.json`, and never push a `v*` tag by hand; release-please owns all three. To fix an entry, edit the open release PR.
-- `cd-github-release.yml` extracts release notes by matching the version heading that release-please writes to `CHANGELOG.md` in the generated release PR, and deliberately fails rather than publishing empty notes. If the heading or notes are wrong, update the open release PR; tagging is performed by the release automation.
+- `cd-github-release.yml` is for consumers, not this repo's own releases. It takes release notes from the `CHANGELOG.md` heading whose version matches the tag — `## v1.2.3 - 2026-10-01`, `## [1.2.3] - 2026-10-01` or release-please's `## [1.2.3](compare-url) (2026-10-01)`, with component tags such as `acme-blocks-v1.2.3` reduced to their version — and deliberately fails rather than publishing empty notes, so a hand-cut release renames `## Unreleased` to its version before tagging. When a release for the tag already exists, as release-please creates one, it only attaches the asset and leaves the notes alone.
 - Consumers pin `@v1`, never a branch such as `@release/v1.0.0`. A moving ref has already broken real consumer runs mid-change.
 
 ## PR instructions
