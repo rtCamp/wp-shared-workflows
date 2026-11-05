@@ -50,7 +50,7 @@ you can copy as-is.
 | [`ci-detect-changes.yml`](.github/workflows/ci-detect-changes.yml) | Buckets changed files, exposes per-type counts and file lists | [example](examples/ci-detect-changes.yml) |
 | [`ci-lint-css.yml`](.github/workflows/ci-lint-css.yml) | Stylelint | [example](examples/ci-lint-css.yml) |
 | [`ci-lint-js.yml`](.github/workflows/ci-lint-js.yml) | ESLint + optional `package.json` validation | [example](examples/ci-lint-js.yml) |
-| [`ci-lint-php.yml`](.github/workflows/ci-lint-php.yml) | PHPCS with `cs2pr` annotations + optional PHPStan | [example](examples/ci-lint-php.yml) |
+| [`ci-lint-php.yml`](.github/workflows/ci-lint-php.yml) | PHPCS and optional PHPStan, both annotated via `cs2pr`, with result caches | [example](examples/ci-lint-php.yml) |
 | [`ci-test-js.yml`](.github/workflows/ci-test-js.yml) | Jest | [example](examples/ci-test-js.yml) |
 | [`ci-test-php.yml`](.github/workflows/ci-test-php.yml) | PHPUnit, via `@wordpress/env` or standalone | [example](examples/ci-test-php.yml) |
 | [`ci-test-a11y.yml`](.github/workflows/ci-test-a11y.yml) | pa11y-ci WCAG2AA | [example](examples/ci-test-a11y.yml) |
