@@ -19,7 +19,10 @@ on:
         type: string
         default: "."
       skip:
-        description: "Comma-separated job ids to drop, e.g. 'a11y,test-php'. Ids: lint-css, lint-js, lint-php, test-js, test-php, build, build-artifact, a11y, artifact-gate."
+        description: >-
+          Comma-separated job ids to drop, e.g. 'a11y, test-php'. Whitespace is ignored and an
+          unknown id fails the run. Ids: lint-css, lint-js, lint-php, test-js, test-php, build,
+          build-artifact, a11y, artifact-gate.
         type: string
         default: ""
       enable-phpstan:
@@ -143,10 +146,12 @@ on:
 
 # project-type and working-dir are in the group so a monorepo caller invoking this workflow
 # once per unit does not have one call cancel its siblings. Uses the RAW input because
-# workflow-level concurrency cannot see job outputs.
+# workflow-level concurrency cannot see job outputs. Only a pull request cancels its own older
+# run: on a push, two quick merges to main would otherwise cancel the first and leave that
+# commit with no status, so every other event gets a group of its own.
 concurrency:
-  group: ci-${{ github.ref }}-${{ inputs.project-type }}-${{ inputs.working-dir }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}-${{ inputs.project-type }}-${{ inputs.working-dir }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -159,7 +164,8 @@ jobs:
       # Children must consume this, NOT inputs.working-dir: an unnormalised "" or
       # "./themes/foo" breaks cache-dependency-path and defeats artifact-gate's anchor.
       working-dir: ${{ steps.check.outputs.working-dir }}
-      preset: ${{ steps.check.outputs.preset }}
+      # The project-type preset minus skip, comma-bounded. Every job gates on this alone.
+      jobs: ${{ steps.check.outputs.jobs }}
       artifact-name: ${{ steps.check.outputs.artifact-name }}
       artifact-slug: ${{ steps.check.outputs.artifact-slug }}
       install-path: ${{ steps.check.outputs.install-path }}
@@ -170,6 +176,7 @@ jobs:
         env:
           PROJECT_TYPE: ${{ inputs.project-type }}
           WORKING_DIR: ${{ inputs.working-dir }}
+          SKIP: ${{ inputs.skip }}
           PHP_VERSIONS: ${{ inputs.php-versions }}
           WP_VERSIONS: ${{ inputs.wp-versions }}
           TEST_PHP_EXCLUDE: ${{ inputs.test-php-exclude }}
@@ -184,6 +191,21 @@ jobs:
             package)      preset="lint-php,test-php,artifact-gate" ;;
             *) echo "::error::project-type must be one of: plugin, theme, package (got '$PROJECT_TYPE')"; exit 1 ;;
           esac
+
+          # Whitespace is dropped, so 'a11y, test-php' skips both, and an unknown id fails here
+          # instead of silently running the job it was meant to drop. Skipping a job the preset
+          # does not run is allowed, so one skip list can serve every unit in a caller's matrix.
+          known=",lint-css,lint-js,lint-php,test-js,test-php,build,build-artifact,a11y,artifact-gate,"
+          jobs=",${preset},"
+          IFS=',' read -r -a skip_ids <<< "$(printf '%s' "$SKIP" | tr -d '[:space:]')"
+          for id in "${skip_ids[@]}"; do
+            [ -n "$id" ] || continue
+            if [[ "$known" != *",${id},"* ]]; then
+              echo "::error::skip names an unknown job '${id}'. Valid ids: ${known:1:${#known}-2}"
+              exit 1
+            fi
+            jobs="${jobs/,${id},/,}"
+          done
 
           dir="${WORKING_DIR:-.}"; dir="${dir#./}"; dir="${dir%/}"; [ -n "$dir" ] || dir="."
           case "$dir" in
@@ -216,7 +238,7 @@ jobs:
 
           {
             echo "working-dir=${dir}"
-            echo "preset=,${preset},"
+            echo "jobs=${jobs}"
             echo "artifact-name=${artifact_name}"
             echo "artifact-slug=${slug}"
             echo "install-path=${install_path}"
@@ -224,6 +246,9 @@ jobs:
 
           echo "::notice::Target '${dir}' (${PROJECT_TYPE}) — artifact '${artifact_name}', slug '${slug}'."
 
+  # A change under .github/workflows or .github/actions (gha-count) runs every job in the
+  # preset and lints the whole project: a PR that only edits the caller's own workflow, such as
+  # its wp-ci inputs, would otherwise pass green with nothing checked.
   detect-changes:
     name: Detect changes
     needs: [validate-inputs]
@@ -240,13 +265,12 @@ jobs:
     name: Lint CSS
     needs: [validate-inputs, detect-changes]
     if: >-
-      needs.detect-changes.outputs.css-count > 0
-      && contains(needs.validate-inputs.outputs.preset, ',lint-css,')
-      && !contains(format(',{0},', inputs.skip), ',lint-css,')
+      (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',lint-css,')
     uses: ./.github/workflows/ci-lint-css.yml
     with:
       runs-on: ${{ inputs.runs-on }}
-      changed-files: ${{ needs.detect-changes.outputs.css-files }}
+      changed-files: ${{ needs.detect-changes.outputs.gha-count == 0 && needs.detect-changes.outputs.css-files || '' }}
       node-version: ${{ inputs.node-version }}
       lint-command: ${{ inputs.lint-css-command }}
       lint-files-command: ${{ inputs.lint-css-files-command }}
@@ -256,13 +280,12 @@ jobs:
     name: Lint JS
     needs: [validate-inputs, detect-changes]
     if: >-
-      needs.detect-changes.outputs.js-count > 0
-      && contains(needs.validate-inputs.outputs.preset, ',lint-js,')
-      && !contains(format(',{0},', inputs.skip), ',lint-js,')
+      (needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',lint-js,')
     uses: ./.github/workflows/ci-lint-js.yml
     with:
       runs-on: ${{ inputs.runs-on }}
-      changed-files: ${{ needs.detect-changes.outputs.js-files }}
+      changed-files: ${{ needs.detect-changes.outputs.gha-count == 0 && needs.detect-changes.outputs.js-files || '' }}
       node-version: ${{ inputs.node-version }}
       lint-command: ${{ inputs.lint-js-command }}
       lint-files-command: ${{ inputs.lint-js-files-command }}
@@ -272,13 +295,12 @@ jobs:
     name: Lint PHP
     needs: [validate-inputs, detect-changes]
     if: >-
-      needs.detect-changes.outputs.php-count > 0
-      && contains(needs.validate-inputs.outputs.preset, ',lint-php,')
-      && !contains(format(',{0},', inputs.skip), ',lint-php,')
+      (needs.detect-changes.outputs.php-count > 0 || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',lint-php,')
     uses: ./.github/workflows/ci-lint-php.yml
     with:
       runs-on: ${{ inputs.runs-on }}
-      changed-files: ${{ needs.detect-changes.outputs.php-files }}
+      changed-files: ${{ needs.detect-changes.outputs.gha-count == 0 && needs.detect-changes.outputs.php-files || '' }}
       enable-phpstan: ${{ inputs.enable-phpstan }}
       php-version: ${{ inputs.php-version }}
       composer-flags: ${{ inputs.composer-flags }}
@@ -290,9 +312,8 @@ jobs:
     name: Test JS
     needs: [validate-inputs, detect-changes]
     if: >-
-      needs.detect-changes.outputs.js-count > 0
-      && contains(needs.validate-inputs.outputs.preset, ',test-js,')
-      && !contains(format(',{0},', inputs.skip), ',test-js,')
+      (needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',test-js,')
     uses: ./.github/workflows/ci-test-js.yml
     with:
       runs-on: ${{ inputs.runs-on }}
@@ -305,9 +326,8 @@ jobs:
     name: Test PHP
     needs: [validate-inputs, detect-changes]
     if: >-
-      needs.detect-changes.outputs.php-count > 0
-      && contains(needs.validate-inputs.outputs.preset, ',test-php,')
-      && !contains(format(',{0},', inputs.skip), ',test-php,')
+      (needs.detect-changes.outputs.php-count > 0 || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',test-php,')
     # Matrix: php-versions × wp-versions, minus test-php-exclude cells. With use-wp-env
     # (default) each cell boots @wordpress/env, pinning PHP + WP core; with use-wp-env
     # false it runs standalone PHPUnit and the wp dimension is inert.
@@ -332,9 +352,9 @@ jobs:
     name: Build
     needs: [validate-inputs, detect-changes]
     if: >-
-      (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
-      && contains(needs.validate-inputs.outputs.preset, ',build,')
-      && !contains(format(',{0},', inputs.skip), ',build,')
+      (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0
+        || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',build,')
     uses: ./.github/workflows/ci-build.yml
     with:
       runs-on: ${{ inputs.runs-on }}
@@ -357,9 +377,9 @@ jobs:
     needs: [validate-inputs, detect-changes, build]
     if: >-
       inputs.build-artifact-path != ''
-      && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
-      && contains(needs.validate-inputs.outputs.preset, ',build-artifact,')
-      && !contains(format(',{0},', inputs.skip), ',build-artifact,')
+      && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0
+        || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',build-artifact,')
     uses: ./.github/workflows/ci-test-build-artifact.yml
     with:
       runs-on: ${{ inputs.runs-on }}
@@ -377,9 +397,9 @@ jobs:
     needs: [validate-inputs, detect-changes]
     if: >-
       inputs.run-a11y
-      && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0)
-      && contains(needs.validate-inputs.outputs.preset, ',a11y,')
-      && !contains(format(',{0},', inputs.skip), ',a11y,')
+      && (needs.detect-changes.outputs.css-count > 0 || needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0
+        || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',a11y,')
     uses: ./.github/workflows/ci-test-a11y.yml
     with:
       runs-on: ${{ inputs.runs-on }}
@@ -395,8 +415,7 @@ jobs:
     needs: [validate-inputs]
     if: >-
       inputs.gated-paths != ''
-      && contains(needs.validate-inputs.outputs.preset, ',artifact-gate,')
-      && !contains(format(',{0},', inputs.skip), ',artifact-gate,')
+      && contains(needs.validate-inputs.outputs.jobs, ',artifact-gate,')
     uses: ./.github/workflows/ci-build-artifact-gate.yml
     with:
       runs-on: ${{ inputs.runs-on }}

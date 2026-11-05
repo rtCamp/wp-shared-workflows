@@ -7,9 +7,15 @@ Reusable GitHub Actions workflows for rtCamp WordPress projects. Pure YAML — n
 ```yaml
 # .github/workflows/ci.yml
 name: CI
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   ci:
     uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
@@ -19,6 +25,11 @@ jobs:
 
 That is a complete CI setup: lint CSS/JS/PHP, Jest, PHPUnit, and build — each job gated on what
 actually changed, so a docs-only PR runs almost nothing.
+
+Trigger on `pull_request` plus `push` to `main` only. A bare `on: [push, pull_request]` runs
+everything twice for every commit pushed to a pull request branch. The `concurrency` block cancels
+a pull request's superseded run but lets every push to `main` finish, so each merged commit keeps
+its status.
 
 Every job runs on the runner the caller picks with the `runs-on` input, as JSON. It defaults to
 GitHub-hosted `"ubuntu-latest"`. A reusable workflow's jobs run in the calling repository, so a public
