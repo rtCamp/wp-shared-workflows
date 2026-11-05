@@ -117,11 +117,11 @@ on:
         type: string
         default: ""
       phpcs-command:
-        description: "PHPCS binary path or custom command. Leave empty for ci-lint-php.yml's default."
+        description: "PHPCS binary path or custom command. It must forward its arguments to PHPCS. Leave empty for ci-lint-php.yml's default."
         type: string
         default: ""
       phpstan-command:
-        description: "Shell command that runs PHPStan when enable-phpstan is true. Leave empty for ci-lint-php.yml's default."
+        description: "Shell command that runs PHPStan when enable-phpstan is true. It must forward its arguments to PHPStan. Leave empty for ci-lint-php.yml's default."
         type: string
         default: ""
       test-js-command:
