@@ -47,6 +47,16 @@ Node comes from `.nvmrc` in `working-dir`, then the repository root, falling bac
 `node-version` to override it. `wp-ci.yml` also forwards `php-version`, the Composer settings and a
 `*-command` input per job, each falling back to that job's default when left empty.
 
+### Branch protection
+
+Require one check per `wp-ci.yml` call: `<caller job name> / CI result`, for example
+`CI / CI result`, or `plugins/acme-blocks / CI result` for each unit of the matrix in
+[`examples/wp-ci.yml`](examples/wp-ci.yml). It fails when any job failed, was cancelled or never
+started, and passes when every job passed or was skipped by its own gate. Don't require the other
+checks: which of them run, and their names, change with `project-type`, `skip`, the PHP matrix and
+what a pull request touched, and a required check that never reports leaves the pull request
+waiting forever.
+
 ## Workflows
 
 Each workflow declares its inputs, secrets and outputs in its own `workflow_call` block, and GitHub

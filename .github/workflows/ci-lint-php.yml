@@ -51,7 +51,7 @@ permissions:
 
 jobs:
   lint-php:
-    name: Lint PHP
+    name: ${{ inputs.enable-phpstan && 'PHPCS + PHPStan' || 'PHPCS' }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     defaults:
       run:
