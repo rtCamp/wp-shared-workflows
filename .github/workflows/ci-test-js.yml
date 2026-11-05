@@ -14,8 +14,9 @@ on:
       test-command:
         description: >-
           Shell command that runs Jest. Leave empty for 'npm run test:js -- --ci'. When
-          enable-cache is true, --cacheDirectory=<path> is appended as "$@", so a custom command
-          must forward its arguments through to Jest — the default does, via npm's `--` separator.
+          enable-cache is true, --cacheDirectory=<path> is appended as "$@", and with coverage on
+          so are --coverage and its reporter flags, so a custom command must forward its arguments
+          through to Jest — the default does, via npm's `--` separator.
         type: string
         default: ""
       enable-cache:
@@ -26,6 +27,32 @@ on:
         description: "Working directory for monorepos."
         type: string
         default: "."
+      coverage:
+        description: >-
+          Measure Jest line coverage, upload the HTML report, and fail the job when too few of the
+          lines this pull request changed are covered. Off by default. Without a pull request base
+          (a push, a schedule) the report is still produced and the gate only prints a notice.
+        type: boolean
+        default: false
+      coverage-threshold:
+        description: "Minimum percentage (0 to 100) of changed executable lines that must be covered. Below it fails; exactly at it passes. Applies only when coverage is true."
+        type: number
+        default: 80
+      coverage-artifact-name:
+        description: "Name of the artifact holding the HTML report, lcov.info and summary.md. Leave empty for 'coverage-js'. Applies only when coverage is true."
+        type: string
+        default: ""
+      base-ref:
+        description: >-
+          Git ref or SHA the coverage gate diffs against (merge base ... HEAD). Empty uses the pull
+          request base. The checkout has full history when coverage is on, so name a branch as
+          'origin/<branch>'. Applies only when coverage is true.
+        type: string
+        default: ""
+      wp-tooling-ref:
+        description: "Version or range of @rtcamp/wp-tooling that runs the coverage gate, from npm. Leave empty for ^2. Applies only when coverage is true."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -41,6 +68,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
+          # The coverage gate diffs against the merge base, so it needs full history. Quoted on
+          # purpose: an unquoted 0 is falsy and the expression would fall through to 1.
+          fetch-depth: ${{ inputs.coverage && '0' || '1' }}
           persist-credentials: false
 
       # Node version: the input, else .nvmrc (working-dir, then repo root), else 22.
@@ -98,8 +128,65 @@ jobs:
           # Jest reads cacheDirectory from its config or --cacheDirectory only; there is no
           # environment variable for it, so the flag has to be appended to the command.
           JEST_CACHE_DIR: ${{ steps.jest-cache.outputs.dir }}
+          COVERAGE: ${{ inputs.coverage }}
         run: |
           set -eo pipefail
           args=()
           [ -z "$JEST_CACHE_DIR" ] || args+=("--cacheDirectory=$JEST_CACHE_DIR")
+          if [ "$COVERAGE" = "true" ]; then
+            # Absolute, because Jest resolves coverageDirectory against its rootDir, which a config
+            # under tests/js may move. The lcov reporter writes lcov.info and the HTML report.
+            args+=(--coverage --coverageReporters=lcov --coverageReporters=text-summary "--coverageDirectory=$PWD/coverage")
+          fi
           bash -eo pipefail -c "$TEST_COMMAND \"\$@\"" _ "${args[@]}"
+
+      - name: Install wp-tooling
+        if: ${{ inputs.coverage }}
+        shell: bash
+        env:
+          WP_TOOLING_VERSION: ${{ inputs.wp-tooling-ref || '^2' }}
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          npm ls --prefix "$RUNNER_TEMP/wp-tooling" @rtcamp/wp-tooling
+          echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Gate changed-line coverage
+        if: ${{ inputs.coverage }}
+        shell: bash
+        env:
+          THRESHOLD: ${{ inputs.coverage-threshold }}
+          BASE_REF: ${{ inputs.base-ref }}
+          WORKING_DIR: ${{ inputs.working-dir }}
+        run: |
+          set -euo pipefail
+          label="Jest"
+          [ "$WORKING_DIR" = "." ] || label="$label, $WORKING_DIR"
+          # The CLI appends its summary to $GITHUB_STEP_SUMMARY. Point that at a file for the
+          # call, so the same markdown also reaches the artifact ci-coverage-comment.yml posts.
+          # An empty --base counts as not given: the CLI uses the pull request base, and on an
+          # event without one it skips with a notice instead of failing.
+          mkdir -p coverage
+          summary=coverage/summary.md
+          status=0
+          GITHUB_STEP_SUMMARY="$summary" wp-tooling coverage-gate --report coverage/lcov.info \
+            --format lcov --threshold "$THRESHOLD" --base "$BASE_REF" --working-dir . \
+            --output github || status=$?
+          if [ -s "$summary" ]; then
+            awk -v label="$label" 'NR == 1 && $0 == "### Changed-line coverage" { print $0 ": " label; next } { print }' \
+              "$summary" > "$summary.tmp"
+            mv "$summary.tmp" "$summary"
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      # Uploaded even when the gate or Jest fails, which is when the report is wanted most.
+      - name: Upload coverage report
+        if: ${{ inputs.coverage && !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ${{ inputs.coverage-artifact-name || 'coverage-js' }}
+          # upload-artifact is a JS action: it ignores defaults.run.working-directory.
+          path: ${{ inputs.working-dir }}/coverage/
+          retention-days: 14
+          if-no-files-found: warn

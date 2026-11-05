@@ -47,6 +47,24 @@ Node comes from `.nvmrc` in `working-dir`, then the repository root, falling bac
 `node-version` to override it. `wp-ci.yml` also forwards `php-version`, the Composer settings and a
 `*-command` input per job, each falling back to that job's default when left empty.
 
+### Coverage
+
+Set `coverage: true` on `wp-ci.yml` to measure the lines each pull request changes, in `test-js`
+and the first `test-php` matrix cell. The job fails when fewer than `coverage-threshold` percent
+(default 80) of the changed executable lines are covered, writes a per-file table of missed lines
+to its summary, and uploads the HTML report as a `coverage-php` / `coverage-js` artifact (suffixed
+with the unit's directory in a monorepo). Add a
+[`ci-coverage-comment.yml`](examples/ci-coverage-comment.yml) job to post the same summary on the
+pull request; it needs `pull-requests: write`, which is why it is not part of `wp-ci.yml`.
+
+New files only count once the test tool is told to include files no test loads: a
+`<source><include>` block in `phpunit.xml.dist` (PHPUnit 10+, or
+`<coverage processUncoveredFiles="true">` on 9) and `collectCoverageFrom` in the Jest config.
+Under wp-env, coverage starts the tests environment (`.wp-env.tests.json` when present) with
+Xdebug, and the default command becomes `npm run --ignore-scripts test:php --`, so a
+`pretest:php` hook that restarts wp-env cannot drop Xdebug. A `test:php` script must pass its
+extra arguments to PHPUnit.
+
 ### Branch protection
 
 Require one check per `wp-ci.yml` call: `<caller job name> / CI result`, for example
@@ -74,6 +92,7 @@ you can copy as-is.
 | [`ci-lint-php.yml`](.github/workflows/ci-lint-php.yml) | PHPCS with `cs2pr` annotations + optional PHPStan | [example](examples/ci-lint-php.yml) |
 | [`ci-test-js.yml`](.github/workflows/ci-test-js.yml) | Jest | [example](examples/ci-test-js.yml) |
 | [`ci-test-php.yml`](.github/workflows/ci-test-php.yml) | PHPUnit, via `@wordpress/env` or standalone | [example](examples/ci-test-php.yml) |
+| [`ci-coverage-comment.yml`](.github/workflows/ci-coverage-comment.yml) | Posts the changed-line coverage summaries of a run as one pull request comment | [example](examples/ci-coverage-comment.yml) |
 | [`ci-test-a11y.yml`](.github/workflows/ci-test-a11y.yml) | pa11y-ci WCAG2AA | [example](examples/ci-test-a11y.yml) |
 | [`ci-build.yml`](.github/workflows/ci-build.yml) | Production build + optional artifact upload | [example](examples/ci-build.yml) |
 | [`ci-build-artifact-gate.yml`](.github/workflows/ci-build-artifact-gate.yml) | Fails a PR that commits build output | [example](examples/ci-build-artifact-gate.yml) |
