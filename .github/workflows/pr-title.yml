@@ -31,3 +31,16 @@ jobs:
         uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # No `ci`: nearly everything in this repo is CI, so a change callers see is `fix`/`feat`
+        # and one that only touches this repo's own files is `chore`.
+        with:
+          types: |
+            feat
+            fix
+            perf
+            revert
+            docs
+            chore
+            refactor
+            test
+            build
