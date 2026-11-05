@@ -1,0 +1,88 @@
+name: CI / Check Interactivity API
+
+# WordPress 7.2 (due 2026-12-09) removes three Interactivity API behaviours deprecated since 6.8
+# and 6.9: data-wp-ignore, two-hyphen unique IDs (data-wp-watch--x, data-wp-on--click--x) and `!`
+# applied to a function. wp-tooling iapi-check scans the project's PHP, HTML and JS for them.
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
+      node-version:
+        description: "Node.js version used to run the wp-tooling CLI."
+        type: string
+        default: "22"
+      working-dir:
+        description: "Directory to scan, relative to the repo root."
+        type: string
+        default: "."
+      fail-on-findings:
+        description: "Fail the job when the scan finds a usage WordPress 7.2 breaks. Off by default: findings are warnings."
+        type: boolean
+        default: false
+      ignore-paths:
+        description: "Regex of paths to leave out of the scan. Empty uses the CLI's default (vendor, node_modules and build output)."
+        type: string
+        default: ""
+      wp-tooling-ref:
+        description: "Version or range of @rtcamp/wp-tooling to run from npm. Leave empty for ^2."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  check-iapi:
+    name: iapi-check
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          # setup-node 5+ caches on its own when package.json names a packageManager, and fails
+          # when that lockfile is missing. This step installs no project dependencies.
+          package-manager-cache: false
+
+      - name: Install wp-tooling
+        shell: bash
+        env:
+          WP_TOOLING_VERSION: ${{ inputs.wp-tooling-ref || '^2' }}
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          npm ls --prefix "$RUNNER_TEMP/wp-tooling" @rtcamp/wp-tooling
+          echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
+
+      # Runs from the repo root with --working-dir as a scope, so annotation paths are
+      # repo-relative and attach to the pull request diff.
+      - name: Scan for Interactivity API usages WordPress 7.2 removes
+        shell: bash
+        env:
+          WORKING_DIR: ${{ inputs.working-dir }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+          IGNORE_PATHS: ${{ inputs.ignore-paths }}
+        run: |
+          set -euo pipefail
+          # A wp-tooling older than the command would fail every caller; say so and pass instead.
+          if ! wp-tooling iapi-check --help >/dev/null 2>&1; then
+            echo "::warning::The installed @rtcamp/wp-tooling has no iapi-check command, so the WordPress 7.2 Interactivity API scan was skipped."
+            exit 0
+          fi
+          args=(--working-dir "$WORKING_DIR" --output github)
+          if [ "$FAIL_ON_FINDINGS" != "true" ]; then
+            args+=(--soft-fail)
+          fi
+          if [ -n "$IGNORE_PATHS" ]; then
+            args+=(--ignore "$IGNORE_PATHS")
+          fi
+          wp-tooling iapi-check "${args[@]}"

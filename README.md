@@ -92,6 +92,7 @@ you can copy as-is.
 | [`ci-lint-php.yml`](.github/workflows/ci-lint-php.yml) | PHPCS with `cs2pr` annotations + optional PHPStan | [example](examples/ci-lint-php.yml) |
 | [`ci-test-js.yml`](.github/workflows/ci-test-js.yml) | Jest | [example](examples/ci-test-js.yml) |
 | [`ci-test-php.yml`](.github/workflows/ci-test-php.yml) | PHPUnit, via `@wordpress/env` or standalone | [example](examples/ci-test-php.yml) |
+| [`ci-check-iapi.yml`](.github/workflows/ci-check-iapi.yml) | Flags Interactivity API usages that WordPress 7.2 removes | [example](examples/ci-check-iapi.yml) |
 | [`ci-coverage-comment.yml`](.github/workflows/ci-coverage-comment.yml) | Posts the changed-line coverage summaries of a run as one pull request comment | [example](examples/ci-coverage-comment.yml) |
 | [`ci-test-a11y.yml`](.github/workflows/ci-test-a11y.yml) | pa11y-ci WCAG2AA | [example](examples/ci-test-a11y.yml) |
 | [`ci-build.yml`](.github/workflows/ci-build.yml) | Production build + optional artifact upload | [example](examples/ci-build.yml) |

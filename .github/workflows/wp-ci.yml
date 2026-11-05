@@ -22,7 +22,7 @@ on:
         description: >-
           Comma-separated job ids to drop, e.g. 'a11y, test-php'. Whitespace is ignored and an
           unknown id fails the run. Ids: lint-css, lint-js, lint-php, test-js, test-php, build,
-          build-artifact, a11y, artifact-gate.
+          build-artifact, a11y, artifact-gate, iapi.
         type: string
         default: ""
       enable-phpstan:
@@ -156,6 +156,13 @@ on:
         description: "Minimum percentage (0 to 100) of changed executable lines that must be covered. Applies only when coverage is true."
         type: number
         default: 80
+      iapi-check-fail:
+        description: >-
+          Fail the iapi job when it finds an Interactivity API usage that WordPress 7.2 removes
+          (data-wp-ignore, two-hyphen unique IDs, `!` on a function). Off by default: findings are
+          warnings.
+        type: boolean
+        default: false
 
 # project-type and working-dir are in the group so a monorepo caller invoking this workflow
 # once per unit does not have one call cancel its siblings. Uses the RAW input because
@@ -203,7 +210,7 @@ jobs:
 
           # The preset as data, in one place, rather than a disjunction repeated in eight `if:`s.
           case "$PROJECT_TYPE" in
-            plugin|theme) preset="lint-css,lint-js,lint-php,test-js,test-php,build,build-artifact,a11y,artifact-gate" ;;
+            plugin|theme) preset="lint-css,lint-js,lint-php,test-js,test-php,build,build-artifact,a11y,artifact-gate,iapi" ;;
             package)      preset="lint-php,test-php,artifact-gate" ;;
             *) echo "::error::project-type must be one of: plugin, theme, package (got '$PROJECT_TYPE')"; exit 1 ;;
           esac
@@ -211,7 +218,7 @@ jobs:
           # Whitespace is dropped, so 'a11y, test-php' skips both, and an unknown id fails here
           # instead of silently running the job it was meant to drop. Skipping a job the preset
           # does not run is allowed, so one skip list can serve every unit in a caller's matrix.
-          known=",lint-css,lint-js,lint-php,test-js,test-php,build,build-artifact,a11y,artifact-gate,"
+          known=",lint-css,lint-js,lint-php,test-js,test-php,build,build-artifact,a11y,artifact-gate,iapi,"
           jobs=",${preset},"
           IFS=',' read -r -a skip_ids <<< "$(printf '%s' "$SKIP" | tr -d '[:space:]')"
           for id in "${skip_ids[@]}"; do
@@ -464,6 +471,23 @@ jobs:
       gated-paths: ${{ inputs.gated-paths }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
+  # WordPress 7.2 (2026-12-09) drops data-wp-ignore, two-hyphen unique IDs and `!` on a
+  # function. The scan covers the whole unit, not only changed files, since the code that breaks
+  # is usually old; it reports warnings unless iapi-check-fail is set.
+  iapi:
+    name: WP 7.2 Interactivity API
+    needs: [validate-inputs, detect-changes]
+    if: >-
+      (needs.detect-changes.outputs.js-count > 0 || needs.detect-changes.outputs.php-count > 0
+        || needs.detect-changes.outputs.gha-count > 0)
+      && contains(needs.validate-inputs.outputs.jobs, ',iapi,')
+    uses: ./.github/workflows/ci-check-iapi.yml
+    with:
+      runs-on: ${{ inputs.runs-on }}
+      working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
+      fail-on-findings: ${{ inputs.iapi-check-fail }}
+      wp-tooling-ref: ${{ inputs.wp-tooling-ref }}
+
   # The one check to require in branch protection: "<caller job> / CI result". The other check
   # names and their count change with project-type, skip, what changed and the PHP matrix, and a
   # skipped required check counts as passing. Runs on always(), so a failed, cancelled or
@@ -482,6 +506,7 @@ jobs:
       - build-artifact
       - a11y
       - artifact-gate
+      - iapi
     if: always()
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
