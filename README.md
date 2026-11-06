@@ -64,6 +64,25 @@ checks: which of them run, and their names, change with `project-type`, `skip`, 
 what a pull request touched, and a required check that never reports leaves the pull request
 waiting forever.
 
+`CI result` only exists when the calling job runs. A calling job with its own `if:` that skips
+reports no `CI result`, so a repository that gates the call needs its own always-running aggregate
+job, or should not require `CI result`.
+
+#### Renamed checks
+
+Check names come from job names, so a rename changes what a ruleset must require. Since v1.2.0:
+
+| Workflow | Old check name | New check name |
+|---|---|---|
+| `ci-lint-php.yml` | `Lint PHP` | `PHPCS`, or `PHPCS + PHPStan` with `enable-phpstan` |
+| `ci-build.yml` | `Build` | `Production build` |
+| `ci-detect-changes.yml` | `Detect changes` | `Bucket changed files` |
+| `ci-build-artifact-gate.yml` | `Block committed build artifacts` | `Check gated paths` |
+| `wp-ci.yml` (`test-php` matrix) | `Test PHP`, the same for every leg | `Test PHP <php>`, or `Test PHP <php>, WP <wp>` |
+
+Called through `wp-ci.yml`, each appears after the `wp-ci.yml` job, for example
+`CI / Lint PHP / PHPCS`; called directly, after the caller's job, for example `lint / PHPCS`.
+
 ## Workflows
 
 Each workflow declares its inputs, secrets and outputs in its own `workflow_call` block, and GitHub
