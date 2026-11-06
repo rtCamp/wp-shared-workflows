@@ -163,6 +163,12 @@ on:
           warnings.
         type: boolean
         default: false
+      iapi-ignore-paths:
+        description: >-
+          Regex of paths the iapi job leaves out of its scan, such as a block's deprecated.js that
+          keeps an old directive on purpose. Separate from ignore-paths, which filters detect-changes.
+        type: string
+        default: ""
 
 # project-type and working-dir are in the group so a monorepo caller invoking this workflow
 # once per unit does not have one call cancel its siblings. Uses the RAW input because
@@ -486,6 +492,7 @@ jobs:
       runs-on: ${{ inputs.runs-on }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
       fail-on-findings: ${{ inputs.iapi-check-fail }}
+      ignore-paths: ${{ inputs.iapi-ignore-paths }}
       wp-tooling-ref: ${{ inputs.wp-tooling-ref }}
 
   # The one check to require in branch protection: "<caller job> / CI result". The other check

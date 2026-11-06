@@ -73,8 +73,13 @@ jobs:
           IGNORE_PATHS: ${{ inputs.ignore-paths }}
         run: |
           set -euo pipefail
-          # A wp-tooling older than the command would fail every caller; say so and pass instead.
+          # A wp-tooling older than the command would fail every caller; say so and pass instead,
+          # unless the caller asked for a failing check.
           if ! wp-tooling iapi-check --help >/dev/null 2>&1; then
+            if [ "$FAIL_ON_FINDINGS" = "true" ]; then
+              echo "::error::iapi-check-fail is set, but the installed @rtcamp/wp-tooling has no iapi-check command. Use wp-tooling 2.1.0 or later."
+              exit 1
+            fi
             echo "::warning::The installed @rtcamp/wp-tooling has no iapi-check command, so the WordPress 7.2 Interactivity API scan was skipped."
             exit 0
           fi
