@@ -102,10 +102,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # A removed file, package.json, the lockfile or a lint config can break files the change
+          # A removed file, package.json, the lockfile or a tool config can break files the change
           # did not touch, so any of them lints the whole project. "./" keeps -x.js a path.
+          # Script-shaped configs (eslint.config.js, jest.config.js, webpack.config.js) count as
+          # config, not as scripts.
           source_pattern='\.(js|cjs|mjs|ts|cts|mts|jsx|tsx)$'
-          config_pattern='(^|/)(eslint\.config|prettier\.config|babel\.config|\.eslintrc|\.prettierrc|\.babelrc)\.[^/]+$'
+          config_pattern='(^|/)(eslint\.config|prettier\.config|babel\.config|jest\.config|webpack\.config|\.eslintrc|\.prettierrc|\.babelrc)\.[^/]+$'
 
           files=()
           full_lint_reason=""
