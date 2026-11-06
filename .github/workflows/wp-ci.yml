@@ -39,7 +39,11 @@ on:
         type: string
         default: '["8.3"]'
       wp-versions:
-        description: "JSON array of WordPress core versions for wp-env, crossed with php-versions, e.g. '[\"6.8\",\"6.9\"]'. An empty-string entry uses .wp-env.json. Ignored when use-wp-env is false."
+        description: >-
+          JSON array of WordPress core versions for wp-env, crossed with php-versions, e.g.
+          '["6.8","latest","trunk"]'. 'latest' is the newest stable release and 'trunk' the
+          development version. An empty-string entry uses .wp-env.json. Ignored when use-wp-env
+          is false.
         type: string
         default: '[""]'
       test-php-exclude:
