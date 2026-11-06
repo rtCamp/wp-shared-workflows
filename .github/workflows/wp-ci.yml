@@ -204,7 +204,7 @@ jobs:
               echo "::error::skip names an unknown job '${id}'. Valid ids: ${known:1:${#known}-2}"
               exit 1
             fi
-            jobs="${jobs/,${id},/,}"
+            jobs="${jobs/,"${id}",/,}"
           done
 
           dir="${WORKING_DIR:-.}"; dir="${dir#./}"; dir="${dir%/}"; [ -n "$dir" ] || dir="."
