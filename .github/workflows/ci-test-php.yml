@@ -103,6 +103,9 @@ jobs:
           php-version: ${{ inputs.php-version }}
           # Standalone runs measure on the host; under wp-env, Xdebug runs inside the container.
           coverage: ${{ (inputs.coverage && !inputs.use-wp-env) && 'pcov' || 'none' }}
+          # PCOV records only files under pcov.directory, which defaults to src/, lib/ or app/
+          # when one exists; the starters keep JS in src/ and PHP in inc/.
+          ini-values: ${{ (inputs.coverage && !inputs.use-wp-env) && format('pcov.directory={0}/{1}', github.workspace, inputs.working-dir) || '' }}
           tools: composer
           # Raises the GitHub API rate limit when composer install resolves a VCS repo.
           github-token: ${{ github.token }}

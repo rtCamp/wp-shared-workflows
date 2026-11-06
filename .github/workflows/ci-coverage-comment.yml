@@ -57,9 +57,11 @@ jobs:
             exit 0
           fi
 
-          marker='<!-- wp-shared-workflows:coverage -->'
+          # Keyed on the caller's workflow, so two workflows in one repository (one per unit)
+          # keep separate comments, and only a comment this token wrote is ever edited.
+          marker="<!-- wp-shared-workflows:coverage:$(printf '%s' "$GITHUB_WORKFLOW" | sha256sum | cut -c1-12) -->"
           existing="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.body | startswith("<!-- wp-shared-workflows:coverage -->")) | .id' | head -n 1)"
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)"
 
           summaries=()
           if [ -d "$REPORTS" ]; then
