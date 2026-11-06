@@ -17,8 +17,9 @@ on:
         default: ""
       wp-version:
         description: >-
-          WordPress core version for wp-env, e.g. '6.8' (resolved as WordPress/WordPress#<version>).
-          Empty uses the version from the consumer's .wp-env.json. Ignored when use-wp-env is false.
+          WordPress core for wp-env: 'latest' (newest stable release), 'trunk' (development
+          version), or a WordPress/WordPress tag such as '6.8.3' (x.y.0 releases are tagged 'x.y').
+          Empty uses the consumer's .wp-env.json. Ignored when use-wp-env is false.
         type: string
         default: ""
       use-wp-env:
@@ -48,9 +49,14 @@ jobs:
     # Pin the wp-env container's PHP/WordPress core via env: (not $GITHUB_ENV, which is
     # newline-injectable) at job scope, so start/run/stop resolve the same environment.
     # An empty WP_ENV_CORE is ignored by wp-env (falls back to the consumer's .wp-env.json).
+    # So 'latest' needs a real source (latest.zip), not an empty value.
     env:
       WP_ENV_PHP_VERSION: ${{ inputs.use-wp-env && inputs.php-version || '' }}
-      WP_ENV_CORE: ${{ (inputs.use-wp-env && inputs.wp-version != '') && format('WordPress/WordPress#{0}', inputs.wp-version) || '' }}
+      WP_ENV_CORE: >-
+        ${{ (inputs.use-wp-env && inputs.wp-version != '') && (
+        inputs.wp-version == 'latest' && 'https://wordpress.org/latest.zip'
+        || inputs.wp-version == 'trunk' && 'WordPress/WordPress#master'
+        || format('WordPress/WordPress#{0}', inputs.wp-version)) || '' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-dir }}
