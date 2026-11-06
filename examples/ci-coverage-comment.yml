@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/wp-ci.yml@v1
+    with:
+      project-type: plugin
+      working-dir: plugins/acme-blocks
+      coverage: true
+      coverage-threshold: 80
+
+  coverage-comment:
+    needs: ci
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-coverage-comment.yml@v1
