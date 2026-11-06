@@ -323,7 +323,8 @@ jobs:
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-php:
-    name: Test PHP
+    # Named explicitly: GitHub's default suffix for this matrix renders as "(8.3, )".
+    name: Test PHP ${{ matrix.php }}${{ matrix.wp != '' && format(', WP {0}', matrix.wp) || '' }}
     needs: [validate-inputs, detect-changes]
     if: >-
       (needs.detect-changes.outputs.php-count > 0 || needs.detect-changes.outputs.gha-count > 0)
@@ -421,3 +422,42 @@ jobs:
       runs-on: ${{ inputs.runs-on }}
       gated-paths: ${{ inputs.gated-paths }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
+
+  # The one check to require in branch protection: "<caller job> / CI result". The other check
+  # names and their count change with project-type, skip, what changed and the PHP matrix, and a
+  # skipped required check counts as passing. Runs on always(), so a failed, cancelled or
+  # never-started job fails it, while a job skipped by its own gate does not.
+  ci-result:
+    name: CI result
+    needs:
+      - validate-inputs
+      - detect-changes
+      - lint-css
+      - lint-js
+      - lint-php
+      - test-js
+      - test-php
+      - build
+      - build-artifact
+      - a11y
+      - artifact-gate
+    if: always()
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - name: Check every job's result
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          {
+            echo "| Job | Result |"
+            echo "|---|---|"
+            jq -r 'to_entries[] | "| `\(.key)` | \(.value.result) |"' <<< "$NEEDS"
+          } >> "$GITHUB_STEP_SUMMARY"
+          bad="$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) (\(.value.result))"' <<< "$NEEDS")"
+          if [ -n "$bad" ]; then
+            echo "::error::CI did not pass: $(printf '%s' "$bad" | paste -sd ',' - | sed 's/,/, /g')."
+            exit 1
+          fi
+          echo "Every job passed or was skipped by its own gate."
