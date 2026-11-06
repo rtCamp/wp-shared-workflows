@@ -78,7 +78,7 @@ Check names come from job names, so a rename changes what a ruleset must require
 | `ci-build.yml` | `Build` | `Production build` |
 | `ci-detect-changes.yml` | `Detect changes` | `Bucket changed files` |
 | `ci-build-artifact-gate.yml` | `Block committed build artifacts` | `Check gated paths` |
-| `wp-ci.yml` (`test-php` matrix) | `Test PHP`, the same for every leg | `Test PHP <php>`, or `Test PHP <php>, WP <wp>` |
+| `wp-ci.yml` (`test-php` matrix) | `Test PHP (<php>, <wp>)`, GitHub's default, e.g. `Test PHP (8.3, )` | `Test PHP <php>`, or `Test PHP <php>, WP <wp>` |
 
 Called through `wp-ci.yml`, each appears after the `wp-ci.yml` job, for example
 `CI / Lint PHP / PHPCS`; called directly, after the caller's job, for example `lint / PHPCS`.
