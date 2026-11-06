@@ -1,10 +1,13 @@
 # Labels for rtCamp/wp-shared-workflows.
 #
 # Labels are repository settings, not files, so adding an entry here does not
-# create the label. A maintainer applies this list by running
-# `gh label create "<name>" --color <color> --description "<description>" --force`
-# for each entry (quote the name and description: most contain spaces or colons): missing labels are created and existing ones updated. That
-# never deletes a label, so removing an entry here does not remove it on GitHub.
+# create the label. A maintainer applies this list by running, for each entry:
+#
+#   gh label create "<name>" --color <color> --description "<description>" --force
+#
+# Quote the name and description: most contain spaces or colons. Missing labels
+# are created and existing ones updated. That never deletes a label, so removing
+# an entry here does not remove it on GitHub.
 #
 # The "Shared" sections are the same in all five rtCamp framework repositories
 # (wp-shared-workflows, wp-primitives, wp-tooling, theme-elementary and
