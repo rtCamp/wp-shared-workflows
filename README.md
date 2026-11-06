@@ -29,7 +29,14 @@ actually changed, so a docs-only PR runs almost nothing.
 Trigger on `pull_request` plus `push` to `main` only. A bare `on: [push, pull_request]` runs
 everything twice for every commit pushed to a pull request branch. The `concurrency` block cancels
 a pull request's superseded run but lets every push to `main` finish, so each merged commit keeps
-its status.
+its status. A caller with its own `concurrency` block keyed on `github.ref` (with
+`cancel-in-progress: true`) still cancels the first of two quick merges, and the called workflow with
+it: replace that block with the one above.
+
+A pull request that only changes `.github/workflows/` or `.github/actions/` runs every job in the
+preset, with the linters over the whole project, so a workflow change is checked against everything
+it configures. In a repository with existing PHPCS violations, that includes Dependabot's
+`github-actions` bumps.
 
 Every job runs on the runner the caller picks with the `runs-on` input, as JSON. It defaults to
 GitHub-hosted `"ubuntu-latest"`. A reusable workflow's jobs run in the calling repository, so a public
@@ -74,6 +81,25 @@ started, and passes when every job passed or was skipped by its own gate. Don't 
 checks: which of them run, and their names, change with `project-type`, `skip`, the PHP matrix and
 what a pull request touched, and a required check that never reports leaves the pull request
 waiting forever.
+
+`CI result` only exists when the calling job runs. A calling job with its own `if:` that skips
+reports no `CI result`, so a repository that gates the call needs its own always-running aggregate
+job, or should not require `CI result`.
+
+#### Renamed checks
+
+Check names come from job names, so a rename changes what a ruleset must require. Since v1.2.0:
+
+| Workflow | Old check name | New check name |
+|---|---|---|
+| `ci-lint-php.yml` | `Lint PHP` | `PHPCS`, or `PHPCS + PHPStan` with `enable-phpstan` |
+| `ci-build.yml` | `Build` | `Production build` |
+| `ci-detect-changes.yml` | `Detect changes` | `Bucket changed files` |
+| `ci-build-artifact-gate.yml` | `Block committed build artifacts` | `Check gated paths` |
+| `wp-ci.yml` (`test-php` matrix) | `Test PHP (<php>, <wp>)`, GitHub's default, e.g. `Test PHP (8.3, )` | `Test PHP <php>`, or `Test PHP <php>, WP <wp>` |
+
+Called through `wp-ci.yml`, each appears after the `wp-ci.yml` job, for example
+`CI / Lint PHP / PHPCS`; called directly, after the caller's job, for example `lint / PHPCS`.
 
 ## Workflows
 
