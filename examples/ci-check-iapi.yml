@@ -1,0 +1,14 @@
+name: WordPress 7.2 readiness
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-iapi:
+    uses: rtCamp/wp-shared-workflows/.github/workflows/ci-check-iapi.yml@v1
+    with:
+      working-dir: themes/acme-theme
+      fail-on-findings: true
