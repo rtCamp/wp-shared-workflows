@@ -88,6 +88,9 @@ jobs:
         with:
           node-version: ${{ steps.node.outputs.version }}
           node-version-file: ${{ steps.node.outputs.file }}
+          # setup-node 5+ caches on its own when package.json names a packageManager, and fails
+          # when that lockfile is missing. This step installs no project dependencies.
+          package-manager-cache: false
 
       - name: Download build artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
