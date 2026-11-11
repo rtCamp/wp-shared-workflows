@@ -24,7 +24,10 @@ on:
         type: string
         default: ""
       wp-version:
-        description: "WordPress version wp-env boots with. 'latest' uses the newest stable release."
+        description: >-
+          WordPress core wp-env boots: 'latest' (newest stable release), 'trunk' (development
+          version, which also skips wp doctor's core-verify-checksums), or a WordPress/WordPress tag
+          such as '6.8.3' (x.y.0 releases are tagged 'x.y').
         type: string
         default: "latest"
       install-path:
@@ -113,7 +116,9 @@ jobs:
             --arg php "$PHP_VERSION" \
             --arg dest "${INSTALL_PATH%/}/${SLUG}" \
             '{
-               core: (if $wp == "latest" then null else "WordPress/WordPress#\($wp)" end),
+               core: (if $wp == "latest" then null
+                      elif $wp == "trunk" then "WordPress/WordPress#master"
+                      else "WordPress/WordPress#\($wp)" end),
                phpVersion: $php,
                plugins: [],
                themes: [],
@@ -148,7 +153,9 @@ jobs:
       - name: Run wp doctor
         shell: bash
         env:
-          DOCTOR_IGNORE_CHECKS: ${{ inputs.doctor-ignore-checks }}
+          DOCTOR_IGNORE_CHECKS: >-
+            ${{ inputs.wp-version == 'trunk' && format('{0},core-verify-checksums', inputs.doctor-ignore-checks)
+            || inputs.doctor-ignore-checks }}
         run: |
           set -euo pipefail
 
