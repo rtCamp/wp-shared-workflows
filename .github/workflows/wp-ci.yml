@@ -65,7 +65,10 @@ on:
         type: string
         default: ""
       base-ref:
-        description: "Explicit git ref detect-changes, and the coverage gate when coverage is on, diff HEAD against. Write a branch as origin/<branch>: the coverage gate passes it straight to git rev-parse. Empty resolves it from the pull request base or the push event."
+        description: >-
+          Explicit git ref detect-changes, and the coverage gate when coverage is on, diff HEAD
+          against. Write a branch as origin/<branch>: the coverage gate passes it straight to git
+          rev-parse. Empty resolves it from the pull request base or the push event.
         type: string
         default: ""
       wp-tooling-ref:

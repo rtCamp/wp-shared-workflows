@@ -47,6 +47,7 @@ jobs:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           RUN_URL: ${{ format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
           REPORTS: ${{ runner.temp }}/coverage
+          ARTIFACT_PATTERN: ${{ inputs.artifact-pattern || 'coverage-*' }}
         run: |
           set -euo pipefail
 
@@ -57,9 +58,11 @@ jobs:
             exit 0
           fi
 
-          # Keyed on the caller's workflow, so two workflows in one repository (one per unit)
-          # keep separate comments, and only a comment this token wrote is ever edited.
-          marker="<!-- wp-shared-workflows:coverage:$(printf '%s' "$GITHUB_WORKFLOW" | sha256sum | cut -c1-12) -->"
+          # Keyed on the caller's workflow file (GITHUB_WORKFLOW is its name:, which two copied
+          # files can share) and the artifact pattern, so each caller file, and each call in one
+          # file with its own pattern, keeps its own comment. Only a comment this token wrote is
+          # ever edited.
+          marker="<!-- wp-shared-workflows:coverage:$(printf '%s\n%s' "${GITHUB_WORKFLOW_REF%@*}" "$ARTIFACT_PATTERN" | sha256sum | cut -c1-12) -->"
           existing="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)"
 
