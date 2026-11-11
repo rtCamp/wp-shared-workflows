@@ -9,9 +9,11 @@ on:
 permissions:
   contents: read
 
+# Superseded pull request runs are cancelled; a push to main or a release branch always
+# finishes, so every merged commit keeps its status.
 concurrency:
-  group: self-check-${{ github.ref }}
-  cancel-in-progress: true
+  group: self-check-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   self-check:
