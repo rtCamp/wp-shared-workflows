@@ -5,8 +5,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Action pins run in callers' CI, so a bump reaches them only through a release. release-please
+    # (release-please-config.json) bumps the patch version for fix and lists it under Fixed.
+    # Retitle a major bump that raises a requirement (such as a newer runner) to feat before merging.
     commit-message:
-      prefix: 'feat'
+      prefix: 'fix'
       include: 'scope'
     labels:
       - Dependencies

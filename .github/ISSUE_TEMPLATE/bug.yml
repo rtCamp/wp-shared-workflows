@@ -1,0 +1,98 @@
+name: Bug report
+description: A reusable workflow fails, misbehaves or rejects a valid caller.
+type: Bug
+labels:
+  - "Type: Bug"
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a bug. Please search
+        [existing issues](https://github.com/rtCamp/wp-shared-workflows/issues?q=is%3Aissue)
+        first.
+  - type: markdown
+    attributes:
+      value: >-
+        **Found a security issue?** Do not open a public issue. Report it
+        privately through
+        [GitHub's vulnerability reporting](https://github.com/rtCamp/wp-shared-workflows/security/advisories/new),
+        as [SECURITY.md](https://github.com/rtCamp/wp-shared-workflows/blob/main/SECURITY.md)
+        describes.
+  - type: input
+    id: workflow
+    attributes:
+      label: Workflow file
+      description: The reusable workflow that fails. Name the leaf if you know it, otherwise the orchestrator you call.
+      placeholder: ci-lint-php.yml
+    validations:
+      required: true
+  - type: input
+    id: caller-ref
+    attributes:
+      label: Caller ref
+      description: The ref after the `@` in your `uses:` line.
+      placeholder: v1
+    validations:
+      required: true
+  - type: dropdown
+    id: runner
+    attributes:
+      label: Runner
+      description: What your caller passes as `runs-on`.
+      options:
+        - GitHub-hosted (the "ubuntu-latest" default or another hosted label)
+        - rtCamp self-hosted ('["self-hosted"]')
+        - Another self-hosted runner
+    validations:
+      required: true
+  - type: input
+    id: run-link
+    attributes:
+      label: Run link
+      description: The failing Actions run. If the repository is private, paste the relevant log output below instead.
+      placeholder: https://github.com/<owner>/<repo>/actions/runs/<run-id>
+    validations:
+      required: false
+  - type: textarea
+    id: caller
+    attributes:
+      label: Caller job
+      description: The job that calls the workflow, with its `with:` and `secrets:` keys. Replace secret values with placeholders.
+      render: yaml
+      placeholder: |
+        lint-php:
+          uses: rtCamp/wp-shared-workflows/.github/workflows/ci-lint-php.yml@v1
+          with:
+            php-version: "8.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The failing step and its error, or the behaviour you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste the failing step's log. It is rendered as code, so no backticks are needed.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: I removed secrets, tokens and private URLs from everything above.
+          required: true
