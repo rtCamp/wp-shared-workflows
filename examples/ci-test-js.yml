@@ -14,3 +14,5 @@ jobs:
       node-version: "22"
       test-command: npm run test:js -- --ci
       enable-cache: true
+      coverage: true
+      coverage-threshold: 80

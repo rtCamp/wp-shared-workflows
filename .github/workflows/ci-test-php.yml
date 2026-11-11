@@ -12,7 +12,7 @@ on:
         type: string
         default: "8.3"
       node-version:
-        description: "Node.js version, used only when use-wp-env is true. Leave empty to read .nvmrc from working-dir, then the repo root, falling back to 22."
+        description: "Node.js version, used when use-wp-env or coverage is true. Leave empty to read .nvmrc from working-dir, then the repo root, falling back to 22."
         type: string
         default: ""
       wp-version:
@@ -26,7 +26,12 @@ on:
         type: boolean
         default: true
       test-command:
-        description: "Shell command that runs PHPUnit. When empty, defaults to 'npm run test:php' if use-wp-env is true, otherwise 'vendor/bin/phpunit'."
+        description: >-
+          Shell command that runs PHPUnit. When empty, defaults to 'npm run test:php' if use-wp-env
+          is true, otherwise 'vendor/bin/phpunit'. With coverage on, '--coverage-clover
+          coverage/clover.xml --coverage-html coverage/html' is appended as "$@", so a custom
+          command must forward its arguments to PHPUnit, and the wp-env default becomes
+          'npm run --ignore-scripts test:php --'.
         type: string
         default: ""
       composer-flags:
@@ -37,6 +42,35 @@ on:
         description: "Working directory for monorepos."
         type: string
         default: "."
+      coverage:
+        description: >-
+          Measure line coverage, upload the HTML report, and fail the job when too few of the lines
+          this pull request changed are covered. Off by default. Under wp-env the environment
+          starts with Xdebug in coverage mode (from .wp-env.tests.json when the project has one),
+          and the default command skips npm's pre and post hooks so pretest:php cannot restart it
+          without Xdebug. Standalone runs use PCOV. Without a pull request base (a push, a
+          schedule) the report is still produced and the gate only prints a notice.
+        type: boolean
+        default: false
+      coverage-threshold:
+        description: "Minimum percentage (0 to 100) of changed executable lines that must be covered. Below it fails; exactly at it passes. Applies only when coverage is true."
+        type: number
+        default: 80
+      coverage-artifact-name:
+        description: "Name of the artifact holding the HTML report, clover.xml and summary.md. Leave empty for 'coverage-php'. Applies only when coverage is true."
+        type: string
+        default: ""
+      base-ref:
+        description: >-
+          Git ref or SHA the coverage gate diffs against (merge base ... HEAD). Empty uses the pull
+          request base. The checkout has full history when coverage is on, so name a branch as
+          'origin/<branch>'. Applies only when coverage is true.
+        type: string
+        default: ""
+      wp-tooling-ref:
+        description: "Version or range of @rtcamp/wp-tooling that runs the coverage gate, from npm. Leave empty for ^2. Applies only when coverage is true."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -58,13 +92,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
+          # The coverage gate diffs against the merge base, so it needs full history. Quoted on
+          # purpose: an unquoted 0 is falsy and the expression would fall through to 1.
+          fetch-depth: ${{ inputs.coverage && '0' || '1' }}
           persist-credentials: false
 
       - name: Set up PHP
         uses: shivammathur/setup-php@accd6127cb78bee3e8082180cb391013d204ef9f  # 2.37.0
         with:
           php-version: ${{ inputs.php-version }}
-          coverage: none
+          # Standalone runs measure on the host; under wp-env, Xdebug runs inside the container.
+          coverage: ${{ (inputs.coverage && !inputs.use-wp-env) && 'pcov' || 'none' }}
+          # PCOV records only files under pcov.directory, which defaults to src/, lib/ or app/
+          # when one exists; the starters keep JS in src/ and PHP in inc/.
+          ini-values: ${{ (inputs.coverage && !inputs.use-wp-env) && format('pcov.directory={0}/{1}', github.workspace, inputs.working-dir) || '' }}
           tools: composer
           # Raises the GitHub API rate limit when composer install resolves a VCS repo.
           github-token: ${{ github.token }}
@@ -72,7 +113,7 @@ jobs:
       # Node version: the input, else .nvmrc (working-dir, then repo root), else 22.
       - name: Resolve Node.js version
         id: node
-        if: ${{ inputs.use-wp-env }}
+        if: ${{ inputs.use-wp-env || inputs.coverage }}
         shell: bash
         env:
           NODE_VERSION: ${{ inputs.node-version }}
@@ -91,14 +132,17 @@ jobs:
           fi
 
       - name: Set up Node.js
-        if: ${{ inputs.use-wp-env }}
+        if: ${{ inputs.use-wp-env || inputs.coverage }}
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: ${{ steps.node.outputs.version }}
           node-version-file: ${{ steps.node.outputs.file }}
-          cache: npm
+          # A standalone Composer library runs Node only for the coverage gate and may have no
+          # package-lock.json to key an npm cache on.
+          cache: ${{ inputs.use-wp-env && 'npm' || '' }}
+          package-manager-cache: false
           # setup-node is a JS action: without this it looks for the lockfile at the repo root.
-          cache-dependency-path: ${{ inputs.working-dir != '.' && format('{0}/package-lock.json', inputs.working-dir) || '' }}
+          cache-dependency-path: ${{ (inputs.use-wp-env && inputs.working-dir != '.') && format('{0}/package-lock.json', inputs.working-dir) || '' }}
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
@@ -111,15 +155,113 @@ jobs:
         run: npm ci
 
       - name: Start wp-env
+        id: wp-env
         if: ${{ inputs.use-wp-env }}
-        run: npm run wp-env start
+        shell: bash
+        env:
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          set -euo pipefail
+          if [ "$COVERAGE" != "true" ]; then
+            npm run wp-env start
+            exit 0
+          fi
+          # wp-env bakes Xdebug into the image it builds, so the environment PHPUnit runs in must
+          # start with it, and any later 'wp-env start' without the flag rebuilds it without.
+          # The starters run tests in a separate .wp-env.tests.json environment.
+          args=(start --xdebug=coverage)
+          if [ -f .wp-env.tests.json ]; then
+            args+=(--config=.wp-env.tests.json)
+            echo "config=.wp-env.tests.json" >> "$GITHUB_OUTPUT"
+          fi
+          npm run wp-env -- "${args[@]}"
 
       - name: Run PHPUnit
         shell: bash
         env:
-          TEST_COMMAND: ${{ inputs.test-command != '' && inputs.test-command || (inputs.use-wp-env && 'npm run test:php' || 'vendor/bin/phpunit') }}
-        run: bash -eo pipefail -c "$TEST_COMMAND"
+          # With coverage under wp-env, --ignore-scripts stops pretest:php from restarting the
+          # environment without Xdebug; Composer dependencies are already installed on the host.
+          TEST_COMMAND: >-
+            ${{ inputs.test-command != '' && inputs.test-command
+            || (inputs.use-wp-env && (inputs.coverage && 'npm run --ignore-scripts test:php --' || 'npm run test:php')
+            || 'vendor/bin/phpunit') }}
+          COVERAGE: ${{ inputs.coverage }}
+        run: |
+          set -eo pipefail
+          if [ "$COVERAGE" != "true" ]; then
+            # Without coverage the command runs exactly as written, so a custom test-command
+            # ending in a compound statement still parses.
+            bash -eo pipefail -c "$TEST_COMMAND"
+            exit 0
+          fi
+          # Relative to the unit: under wp-env PHPUnit runs in the mapped plugin or theme
+          # directory, so the reports land in <working-dir>/coverage on the runner.
+          args=(--coverage-clover coverage/clover.xml --coverage-html coverage/html)
+          bash -eo pipefail -c "$TEST_COMMAND \"\$@\"" _ "${args[@]}"
+
+      - name: Install wp-tooling
+        if: ${{ inputs.coverage }}
+        shell: bash
+        env:
+          WP_TOOLING_VERSION: ${{ inputs.wp-tooling-ref || '^2' }}
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/wp-tooling" "@rtcamp/wp-tooling@$WP_TOOLING_VERSION"
+          npm ls --prefix "$RUNNER_TEMP/wp-tooling" @rtcamp/wp-tooling
+          echo "$RUNNER_TEMP/wp-tooling/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Gate changed-line coverage
+        if: ${{ inputs.coverage }}
+        shell: bash
+        env:
+          THRESHOLD: ${{ inputs.coverage-threshold }}
+          BASE_REF: ${{ inputs.base-ref }}
+          PHP_VERSION: ${{ inputs.php-version }}
+          WP_VERSION: ${{ inputs.wp-version }}
+          WORKING_DIR: ${{ inputs.working-dir }}
+        run: |
+          set -euo pipefail
+          label="PHPUnit, PHP $PHP_VERSION"
+          [ -z "$WP_VERSION" ] || label="$label, WP $WP_VERSION"
+          [ "$WORKING_DIR" = "." ] || label="$label, $WORKING_DIR"
+          # The CLI appends its summary to $GITHUB_STEP_SUMMARY. Point that at a file for the
+          # call, so the same markdown also reaches the artifact ci-coverage-comment.yml posts.
+          # An empty --base counts as not given: the CLI uses the pull request base, and on an
+          # event without one it skips with a notice instead of failing.
+          mkdir -p coverage
+          summary=coverage/summary.md
+          status=0
+          GITHUB_STEP_SUMMARY="$summary" wp-tooling coverage-gate --report coverage/clover.xml \
+            --format clover --threshold "$THRESHOLD" --base "$BASE_REF" --working-dir . \
+            --output github || status=$?
+          if [ -s "$summary" ]; then
+            awk -v label="$label" 'NR == 1 && $0 == "### Changed-line coverage" { print $0 ": " label; next } { print }' \
+              "$summary" > "$summary.tmp"
+            mv "$summary.tmp" "$summary"
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      # Uploaded even when the gate or PHPUnit fails, which is when the report is wanted most.
+      - name: Upload coverage report
+        if: ${{ inputs.coverage && !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ${{ inputs.coverage-artifact-name || 'coverage-php' }}
+          # upload-artifact is a JS action: it ignores defaults.run.working-directory.
+          path: ${{ inputs.working-dir }}/coverage/
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Stop wp-env
         if: ${{ inputs.use-wp-env && always() }}
-        run: npm run wp-env stop
+        shell: bash
+        env:
+          WP_ENV_CONFIG: ${{ steps.wp-env.outputs.config }}
+        run: |
+          set -euo pipefail
+          if [ -n "$WP_ENV_CONFIG" ]; then
+            npm run wp-env -- stop "--config=$WP_ENV_CONFIG"
+          else
+            npm run wp-env stop
+          fi

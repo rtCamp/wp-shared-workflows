@@ -65,11 +65,14 @@ on:
         type: string
         default: ""
       base-ref:
-        description: "Explicit git ref detect-changes diffs HEAD against. Empty resolves it from the pull request base or the push event."
+        description: >-
+          Explicit git ref detect-changes, and the coverage gate when coverage is on, diff HEAD
+          against. Write a branch as origin/<branch>: the coverage gate passes it straight to git
+          rev-parse. Empty resolves it from the pull request base or the push event.
         type: string
         default: ""
       wp-tooling-ref:
-        description: "Version or range of @rtcamp/wp-tooling that detect-changes runs from npm. Leave empty for ^2."
+        description: "Version or range of @rtcamp/wp-tooling that detect-changes, and the coverage gate when coverage is on, run from npm. Leave empty for ^2."
         type: string
         default: ""
       gated-paths:
@@ -143,6 +146,19 @@ on:
         description: "Shell command that runs pa11y-ci. Leave empty for ci-test-a11y.yml's default."
         type: string
         default: ""
+      coverage:
+        description: >-
+          Measure coverage in test-js and in the first test-php matrix cell (the first of
+          php-versions with the first of wp-versions), upload each HTML report as a
+          coverage-php / coverage-js artifact, and fail when too few of the lines the pull request
+          changed are covered. Pair with ci-coverage-comment.yml to post the summary on the pull
+          request.
+        type: boolean
+        default: false
+      coverage-threshold:
+        description: "Minimum percentage (0 to 100) of changed executable lines that must be covered. Applies only when coverage is true."
+        type: number
+        default: 80
 
 # project-type and working-dir are in the group so a monorepo caller invoking this workflow
 # once per unit does not have one call cancel its siblings. Uses the RAW input because
@@ -167,6 +183,8 @@ jobs:
       # The project-type preset minus skip, comma-bounded. Every job gates on this alone.
       jobs: ${{ steps.check.outputs.jobs }}
       artifact-name: ${{ steps.check.outputs.artifact-name }}
+      coverage-php-artifact: ${{ steps.check.outputs.coverage-php-artifact }}
+      coverage-js-artifact: ${{ steps.check.outputs.coverage-js-artifact }}
       artifact-slug: ${{ steps.check.outputs.artifact-slug }}
       install-path: ${{ steps.check.outputs.install-path }}
     steps:
@@ -180,6 +198,7 @@ jobs:
           PHP_VERSIONS: ${{ inputs.php-versions }}
           WP_VERSIONS: ${{ inputs.wp-versions }}
           TEST_PHP_EXCLUDE: ${{ inputs.test-php-exclude }}
+          COVERAGE: ${{ inputs.coverage }}
           ARTIFACT_SLUG: ${{ inputs.build-artifact-slug }}
           REPO_NAME: ${{ github.event.repository.name }}
         run: |
@@ -220,13 +239,25 @@ jobs:
           echo "$TEST_PHP_EXCLUDE" | jq -e 'type == "array"' >/dev/null \
             || { echo "::error::test-php-exclude must be a JSON array (got '$TEST_PHP_EXCLUDE')"; exit 1; }
 
+          # Coverage runs in the first test-php cell only, so excluding that cell would silently
+          # measure nothing. An exclude entry that omits a key matches every value of it.
+          if [ "$COVERAGE" = "true" ] && jq -e --argjson p "$PHP_VERSIONS" --argjson w "$WP_VERSIONS" \
+            'any(.[]; ((has("php") | not) or ((.php | tostring) == ($p[0] | tostring)))
+                      and ((has("wp") | not) or ((.wp | tostring) == ($w[0] | tostring))))' \
+            <<< "$TEST_PHP_EXCLUDE" >/dev/null; then
+            echo "::error::coverage runs in the first test-php cell (php $(jq -r '.[0]' <<< "$PHP_VERSIONS")," \
+              "wp '$(jq -r '.[0]' <<< "$WP_VERSIONS")'), which test-php-exclude drops. Reorder php-versions or wp-versions."
+            exit 1
+          fi
+
           # upload-artifact rejects '/' in a name and 409s on a duplicate within a run, which
           # two units sharing one name would hit.
           if [ "$dir" = "." ]; then
-            artifact_name="wp-ci-build"
+            unit_suffix=""
           else
-            artifact_name="wp-ci-build-$(printf '%s' "$dir" | sed 's/-/--/g; s|/|-|g' | tr -c 'a-zA-Z0-9._-' '-')"
+            unit_suffix="-$(printf '%s' "$dir" | sed 's/-/--/g; s|/|-|g' | tr -c 'a-zA-Z0-9._-' '-')"
           fi
+          artifact_name="wp-ci-build${unit_suffix}"
 
           # A monorepo's repo name is rarely the slug, so prefer the target directory's basename.
           if [ -n "$ARTIFACT_SLUG" ]; then slug="$ARTIFACT_SLUG"
@@ -240,6 +271,8 @@ jobs:
             echo "working-dir=${dir}"
             echo "jobs=${jobs}"
             echo "artifact-name=${artifact_name}"
+            echo "coverage-php-artifact=coverage-php${unit_suffix}"
+            echo "coverage-js-artifact=coverage-js${unit_suffix}"
             echo "artifact-slug=${slug}"
             echo "install-path=${install_path}"
           } >> "$GITHUB_OUTPUT"
@@ -320,6 +353,11 @@ jobs:
       node-version: ${{ inputs.node-version }}
       test-command: ${{ inputs.test-js-command }}
       enable-cache: ${{ inputs.test-js-cache }}
+      coverage: ${{ inputs.coverage }}
+      coverage-threshold: ${{ inputs.coverage-threshold }}
+      coverage-artifact-name: ${{ needs.validate-inputs.outputs.coverage-js-artifact }}
+      base-ref: ${{ inputs.base-ref }}
+      wp-tooling-ref: ${{ inputs.wp-tooling-ref }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   test-php:
@@ -347,6 +385,12 @@ jobs:
       node-version: ${{ inputs.node-version }}
       test-command: ${{ inputs.test-php-command }}
       composer-flags: ${{ inputs.composer-flags }}
+      # One cell only: several would multiply the cost and produce gates that can disagree.
+      coverage: ${{ inputs.coverage && matrix.php == fromJSON(inputs.php-versions)[0] && matrix.wp == fromJSON(inputs.wp-versions)[0] }}
+      coverage-threshold: ${{ inputs.coverage-threshold }}
+      coverage-artifact-name: ${{ needs.validate-inputs.outputs.coverage-php-artifact }}
+      base-ref: ${{ inputs.base-ref }}
+      wp-tooling-ref: ${{ inputs.wp-tooling-ref }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
 
   build:

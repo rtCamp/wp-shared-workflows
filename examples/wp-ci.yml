@@ -40,3 +40,4 @@ jobs:
       wp-versions: '["6.7", "6.8"]'
       gated-paths: assets/build/
       build-artifact-path: dist/
+      coverage: true

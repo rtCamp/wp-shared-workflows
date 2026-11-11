@@ -1,0 +1,103 @@
+name: CI / Coverage Comment
+
+# Posts the changed-line coverage summaries that ci-test-php.yml and ci-test-js.yml (or wp-ci.yml
+# with coverage on) uploaded in the same run as one comment on the pull request, and updates that
+# comment on every later run. Kept out of wp-ci.yml on purpose: a job that asks for
+# pull-requests: write fails validation for every caller that does not grant it, even when the
+# job would be skipped.
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "Runner for every job, as JSON: a label such as \"ubuntu-latest\" or a label list such as [\"self-hosted\"]. rtCamp private repos pass [\"self-hosted\"]."
+        type: string
+        default: '"ubuntu-latest"'
+      artifact-pattern:
+        description: "Glob matching the coverage artifacts to read from this run. Leave empty for 'coverage-*', which matches every artifact the test workflows upload."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  comment:
+    name: Post coverage summary
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Matching no artifact is not an error: the run then had nothing to measure.
+      - name: Download coverage reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          pattern: ${{ inputs.artifact-pattern || 'coverage-*' }}
+          path: ${{ runner.temp }}/coverage
+
+      - name: Post or update the pull request comment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          RUN_URL: ${{ format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+          REPORTS: ${{ runner.temp }}/coverage
+          ARTIFACT_PATTERN: ${{ inputs.artifact-pattern || 'coverage-*' }}
+        run: |
+          set -euo pipefail
+
+          # A fork's pull_request token is read-only, so it cannot comment. Each test job's own
+          # summary still carries the numbers.
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::notice::Pull request from a fork: its token cannot comment, so the coverage summary stays in the test jobs' summaries."
+            exit 0
+          fi
+
+          # Keyed on the caller's workflow file (GITHUB_WORKFLOW is its name:, which two copied
+          # files can share) and the artifact pattern, so each caller file, and each call in one
+          # file with its own pattern, keeps its own comment. Only a comment this token wrote is
+          # ever edited.
+          marker="<!-- wp-shared-workflows:coverage:$(printf '%s\n%s' "${GITHUB_WORKFLOW_REF%@*}" "$ARTIFACT_PATTERN" | sha256sum | cut -c1-12) -->"
+          existing="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)"
+
+          summaries=()
+          if [ -d "$REPORTS" ]; then
+            mapfile -t summaries < <(find "$REPORTS" -type f -name summary.md | sort)
+          fi
+
+          body="$RUNNER_TEMP/coverage-comment.md"
+          {
+            echo "$marker"
+            echo "## Coverage"
+            echo
+            if [ "${#summaries[@]}" -eq 0 ]; then
+              echo "No coverage was measured for ${HEAD_SHA:0:7}: this run changed nothing the tests cover."
+            else
+              echo "For ${HEAD_SHA:0:7}. The HTML reports are in the \`coverage-*\` artifacts of [this run]($RUN_URL)."
+              for file in "${summaries[@]}"; do
+                echo
+                cat "$file"
+              done
+            fi
+          } > "$body"
+
+          if [ "${#summaries[@]}" -eq 0 ] && [ -z "$existing" ]; then
+            echo "No coverage summaries in this run and no earlier comment to update."
+            exit 0
+          fi
+
+          # Commenting is informational: a token without pull-requests: write (a Dependabot pull
+          # request, say) gets a warning, not a failed run.
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F "body=@$body" >/dev/null \
+              || echo "::warning::Could not update the coverage comment on #$PR_NUMBER."
+          else
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F "body=@$body" >/dev/null \
+              || echo "::warning::Could not post the coverage comment on #$PR_NUMBER."
+          fi

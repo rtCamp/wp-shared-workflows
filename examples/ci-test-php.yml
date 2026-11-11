@@ -20,3 +20,5 @@ jobs:
       php-version: ${{ matrix.php-version }}
       wp-version: ${{ matrix.wp-version }}
       use-wp-env: true
+      coverage: ${{ matrix.php-version == '8.3' && matrix.wp-version == '6.8' }}
+      coverage-threshold: 80
