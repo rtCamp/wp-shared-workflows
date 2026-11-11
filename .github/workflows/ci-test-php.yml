@@ -188,12 +188,15 @@ jobs:
           COVERAGE: ${{ inputs.coverage }}
         run: |
           set -eo pipefail
-          args=()
-          if [ "$COVERAGE" = "true" ]; then
-            # Relative to the unit: under wp-env PHPUnit runs in the mapped plugin or theme
-            # directory, so the reports land in <working-dir>/coverage on the runner.
-            args+=(--coverage-clover coverage/clover.xml --coverage-html coverage/html)
+          if [ "$COVERAGE" != "true" ]; then
+            # Without coverage the command runs exactly as written, so a custom test-command
+            # ending in a compound statement still parses.
+            bash -eo pipefail -c "$TEST_COMMAND"
+            exit 0
           fi
+          # Relative to the unit: under wp-env PHPUnit runs in the mapped plugin or theme
+          # directory, so the reports land in <working-dir>/coverage on the runner.
+          args=(--coverage-clover coverage/clover.xml --coverage-html coverage/html)
           bash -eo pipefail -c "$TEST_COMMAND \"\$@\"" _ "${args[@]}"
 
       - name: Install wp-tooling
