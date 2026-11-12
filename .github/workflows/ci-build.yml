@@ -59,7 +59,7 @@ permissions:
 
 jobs:
   build:
-    name: Build
+    name: Production build
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     defaults:
       run:

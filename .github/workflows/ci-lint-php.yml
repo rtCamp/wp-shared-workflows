@@ -51,7 +51,7 @@ permissions:
 
 jobs:
   lint-php:
-    name: Lint PHP
+    name: PHP lint
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     defaults:
       run:
