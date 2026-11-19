@@ -24,7 +24,10 @@ on:
         type: string
         default: ""
       wp-version:
-        description: "WordPress version wp-env boots with. 'latest' uses the newest stable release."
+        description: >-
+          WordPress core wp-env boots: 'latest' (newest stable release), 'trunk' (development branch),
+          or a specific WordPress version (e.g. '6.8' for the latest 6.8.x or '6.8.2' for a specific
+          patch version).
         type: string
         default: "latest"
       install-path:
@@ -107,13 +110,34 @@ jobs:
         run: |
           set -euo pipefail
 
+          case "$WP_VERSION" in
+            latest) core="" ;;
+            trunk) core="WordPress/WordPress#master" ;;
+            *)
+              # x.y means its newest x.y.z; the WordPress/WordPress mirror tags x.y.0 releases as x.y.
+              if [[ "$WP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                ref=$(git ls-remote --tags --refs --sort=version:refname https://github.com/WordPress/WordPress.git "$WP_VERSION" "$WP_VERSION.*" \
+                  | tail -n1 | sed 's|.*refs/tags/||')
+              elif [[ "$WP_VERSION" =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
+                ref=${WP_VERSION%.0}
+              else
+                ref=$WP_VERSION
+              fi
+              if [[ ! "$ref" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+                echo "::error::wp-version '$WP_VERSION' matches no WordPress release."
+                exit 1
+              fi
+              core="WordPress/WordPress#$ref"
+              ;;
+          esac
+
           # Mount only the artifact; a consumer's .wp-env.json usually mounts the dev source (".") at the same path.
           jq -n \
-            --arg wp "$WP_VERSION" \
+            --arg core "$core" \
             --arg php "$PHP_VERSION" \
             --arg dest "${INSTALL_PATH%/}/${SLUG}" \
             '{
-               core: (if $wp == "latest" then null else "WordPress/WordPress#\($wp)" end),
+               core: (if $core == "" then null else $core end),
                phpVersion: $php,
                plugins: [],
                themes: [],
@@ -148,7 +172,10 @@ jobs:
       - name: Run wp doctor
         shell: bash
         env:
-          DOCTOR_IGNORE_CHECKS: ${{ inputs.doctor-ignore-checks }}
+          # WordPress.org publishes no checksums for trunk builds.
+          DOCTOR_IGNORE_CHECKS: >-
+            ${{ inputs.wp-version == 'trunk' && format('{0},core-verify-checksums', inputs.doctor-ignore-checks)
+            || inputs.doctor-ignore-checks }}
         run: |
           set -euo pipefail
 
