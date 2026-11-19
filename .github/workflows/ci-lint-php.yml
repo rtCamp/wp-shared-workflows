@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       phpcs-command:
-        description: "PHPCS binary path or custom command. Leave empty for 'vendor/bin/phpcs'."
+        description: "PHPCS binary path or custom command. It must forward its arguments to PHPCS. Leave empty for 'vendor/bin/phpcs'."
         type: string
         default: ""
       changed-files:
@@ -24,7 +24,7 @@ on:
         type: string
         default: ""
       phpstan-command:
-        description: "Shell command that runs PHPStan. Leave empty for 'vendor/bin/phpstan analyse'."
+        description: "Shell command that runs PHPStan. It must forward its arguments to PHPStan. Leave empty for 'vendor/bin/phpstan analyse'."
         type: string
         default: ""
       phpstan-level:
@@ -76,10 +76,34 @@ jobs:
         run: composer validate --no-check-publish
 
       - name: Install Composer dependencies
+        id: composer
         uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda  # 4.0.0
         with:
           working-directory: ${{ inputs.working-dir }}
           composer-options: ${{ inputs.composer-flags || '--prefer-dist --optimize-autoloader --no-scripts' }}
+
+      - name: Resolve PHPStan tmpDir
+        id: phpstan-tmp
+        if: ${{ inputs.enable-phpstan }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$(vendor/bin/phpstan dump-parameters --json | jq -r '.tmpDir // empty')" || dir=""
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      # Per-run key so every run saves fresh results. The brackets stop one working-dir prefixing
+      # another, and the composer.lock hash starts a clean cache when dependencies change.
+      - name: Restore lint caches
+        id: lint-cache
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        env:
+          KEY_PREFIX: lint-php-${{ runner.os }}-${{ inputs.php-version || '8.3' }}-[${{ inputs.working-dir }}]-${{ hashFiles(format('{0}/composer.lock', inputs.working-dir)) }}-
+        with:
+          path: |
+            ${{ runner.temp }}/phpcs.cache
+            ${{ steps.phpstan-tmp.outputs.dir }}
+          key: ${{ env.KEY_PREFIX }}${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.KEY_PREFIX }}
 
       - name: Run PHPCS
         shell: bash
@@ -89,9 +113,9 @@ jobs:
         run: |
           set -euo pipefail
           # phpcs-command is a command and runs as shell; the report flags are appended as "$@" so
-          # they stay argv. The pipe to cs2pr stays out here, so a non-zero phpcs still trips
-          # pipefail exactly as before.
-          args=(-q --report=checkstyle --runtime-set ignore_warnings_on_exit 1)
+          # they stay argv. A repo-root basepath keeps annotation paths right in a monorepo.
+          report="$RUNNER_TEMP/phpcs.xml"
+          args=(-q --report-full "--report-checkstyle=$report" "--cache=$RUNNER_TEMP/phpcs.cache" "--basepath=$GITHUB_WORKSPACE")
           # php-files also lists composer.json, composer.lock and the PHPStan config, so a
           # dependency or config change re-runs this job, and it can name files the change
           # deleted. PHPCS only takes PHP files that exist; when anything else changed, a
@@ -105,17 +129,35 @@ jobs:
             printf '%s\n' "$php_files" > "$tmp_list"
             args=(--file-list="$tmp_list" "${args[@]}")
           fi
-          bash -eo pipefail -c "$PHPCS_COMMAND \"\$@\"" _ "${args[@]}" \
-            | cs2pr --graceful-warnings
+          status=0
+          bash -eo pipefail -c "$PHPCS_COMMAND \"\$@\"" _ "${args[@]}" || status=$?
+          [ ! -s "$report" ] || cs2pr --graceful-warnings "$report"
+          exit "$status"
 
       - name: Run PHPStan
-        if: ${{ inputs.enable-phpstan }}
+        if: ${{ !cancelled() && inputs.enable-phpstan && steps.composer.outcome == 'success' }}
         shell: bash
         env:
           PHPSTAN_COMMAND: ${{ inputs.phpstan-command || 'vendor/bin/phpstan analyse' }}
           PHPSTAN_LEVEL: ${{ inputs.phpstan-level }}
         run: |
           set -eo pipefail
-          args=()
+          args=(--error-format=checkstyle)
           [ -z "$PHPSTAN_LEVEL" ] || args+=("--level=$PHPSTAN_LEVEL")
-          bash -eo pipefail -c "$PHPSTAN_COMMAND \"\$@\"" _ "${args[@]}"
+          # PHPStan reports paths relative to working-dir, but annotations resolve from the repo root.
+          root="$(cd "$GITHUB_WORKSPACE" && pwd -P)/"
+          prefix="$(pwd -P)/"
+          prefix="${prefix#"$root"}"
+          case "$prefix" in /* | *[\|\&\\\<\>\"]*) prefix="" ;; esac
+          bash -eo pipefail -c "$PHPSTAN_COMMAND \"\$@\"" _ "${args[@]}" \
+            | sed "s|<file name=\"\([^/]\)|<file name=\"$prefix\1|" \
+            | cs2pr --graceful-warnings
+
+      - name: Save lint caches
+        if: ${{ !cancelled() && steps.composer.outcome == 'success' }}
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            ${{ runner.temp }}/phpcs.cache
+            ${{ steps.phpstan-tmp.outputs.dir }}
+          key: ${{ steps.lint-cache.outputs.cache-primary-key }}
