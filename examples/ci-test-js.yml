@@ -12,5 +12,6 @@ jobs:
     with:
       working-dir: plugins/acme-blocks
       node-version: "22"
+      test-runner: jest
       test-command: npm run test:js -- --ci
       enable-cache: true

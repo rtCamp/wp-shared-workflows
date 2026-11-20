@@ -11,15 +11,20 @@ on:
         description: "Node.js version. Leave empty to read .nvmrc from working-dir, then the repo root, falling back to 22."
         type: string
         default: ""
+      test-runner:
+        description: "JS test runner. Use jest or vitest. Leave empty for Jest."
+        type: string
+        default: ""
       test-command:
         description: >-
-          Shell command that runs Jest. Leave empty for 'npm run test:js -- --ci'. When
-          enable-cache is true, --cacheDirectory=<path> is appended as "$@", so a custom command
-          must forward its arguments through to Jest — the default does, via npm's `--` separator.
+          Shell command that runs the tests. Leave empty for 'npm run test:js -- --ci' with Jest,
+          or 'npm run test:js --' with Vitest. With Jest and enable-cache, --cacheDirectory=<path>
+          is appended as "$@", so a custom command must forward its arguments through to Jest — the
+          default does, via npm's `--` separator.
         type: string
         default: ""
       enable-cache:
-        description: "Cache Jest transform/result data across runs."
+        description: "Cache Jest transform/result data across runs. Ignored when test-runner is vitest."
         type: boolean
         default: true
       working-dir:
@@ -32,7 +37,7 @@ permissions:
 
 jobs:
   test-js:
-    name: Jest
+    name: ${{ inputs.test-runner == 'vitest' && 'Vitest' || 'Jest' }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     defaults:
       run:
@@ -42,6 +47,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Resolve test runner
+        id: runner
+        shell: bash
+        env:
+          TEST_RUNNER: ${{ inputs.test-runner }}
+        run: |
+          set -euo pipefail
+          case "${TEST_RUNNER:-jest}" in
+            jest|vitest) echo "name=${TEST_RUNNER:-jest}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::test-runner must be jest or vitest (got '$TEST_RUNNER')"; exit 1 ;;
+          esac
 
       # Node version: the input, else .nvmrc (working-dir, then repo root), else 22.
       - name: Resolve Node.js version
@@ -74,11 +91,11 @@ jobs:
 
       - name: Resolve Jest cache directory
         id: jest-cache
-        if: ${{ inputs.enable-cache }}
+        if: ${{ inputs.enable-cache && steps.runner.outputs.name == 'jest' }}
         run: echo "dir=$HOME/.jest-cache" >> "$GITHUB_OUTPUT"
 
       - name: Set up Jest cache
-        if: ${{ inputs.enable-cache }}
+        if: ${{ inputs.enable-cache && steps.runner.outputs.name == 'jest' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ steps.jest-cache.outputs.dir }}
@@ -91,15 +108,26 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Run Jest
+      - name: Run tests
         shell: bash
         env:
-          TEST_COMMAND: ${{ inputs.test-command || 'npm run test:js -- --ci' }}
+          TEST_RUNNER: ${{ steps.runner.outputs.name }}
+          TEST_COMMAND: ${{ inputs.test-command }}
           # Jest reads cacheDirectory from its config or --cacheDirectory only; there is no
           # environment variable for it, so the flag has to be appended to the command.
           JEST_CACHE_DIR: ${{ steps.jest-cache.outputs.dir }}
         run: |
           set -eo pipefail
           args=()
-          [ -z "$JEST_CACHE_DIR" ] || args+=("--cacheDirectory=$JEST_CACHE_DIR")
+          case "$TEST_RUNNER" in
+            jest)
+              TEST_COMMAND="${TEST_COMMAND:-npm run test:js -- --ci}"
+              [ -z "$JEST_CACHE_DIR" ] || args+=("--cacheDirectory=$JEST_CACHE_DIR")
+              ;;
+            vitest)
+              # Vitest has no --ci: it reads CI from the environment. The trailing -- makes npm
+              # pass appended flags on to Vitest instead of reading them itself.
+              TEST_COMMAND="${TEST_COMMAND:-npm run test:js --}"
+              ;;
+          esac
           bash -eo pipefail -c "$TEST_COMMAND \"\$@\"" _ "${args[@]}"
