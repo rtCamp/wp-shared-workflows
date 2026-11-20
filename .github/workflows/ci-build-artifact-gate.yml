@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   build-artifact-gate:
-    name: Block committed build artifacts
+    name: Check gated paths
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     steps:
       - name: Checkout repository
