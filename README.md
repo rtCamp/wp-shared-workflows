@@ -23,7 +23,7 @@ jobs:
       project-type: plugin   # plugin | theme | package
 ```
 
-That is a complete CI setup: lint CSS/JS/PHP, Jest, PHPUnit, and build — each job gated on what
+That is a complete CI setup: lint CSS/JS/PHP, Jest or Vitest, PHPUnit, and build — each job gated on what
 actually changed, so a docs-only PR runs almost nothing.
 
 Trigger on `pull_request` plus `push` to `main` only. A bare `on: [push, pull_request]` runs
@@ -54,6 +54,8 @@ Node comes from `.nvmrc` in `working-dir`, then the repository root, falling bac
 `node-version` to override it. `wp-ci.yml` also forwards `php-version`, the Composer settings and a
 `*-command` input per job, each falling back to that job's default when left empty.
 
+JS tests use Jest by default. If your `test:js` script runs Vitest, set `test-js-runner: vitest`.
+
 ## Workflows
 
 Each workflow declares its inputs, secrets and outputs in its own `workflow_call` block, and GitHub
@@ -69,7 +71,7 @@ you can copy as-is.
 | [`ci-lint-css.yml`](.github/workflows/ci-lint-css.yml) | Stylelint | [example](examples/ci-lint-css.yml) |
 | [`ci-lint-js.yml`](.github/workflows/ci-lint-js.yml) | ESLint + optional `package.json` validation | [example](examples/ci-lint-js.yml) |
 | [`ci-lint-php.yml`](.github/workflows/ci-lint-php.yml) | PHPCS with `cs2pr` annotations + optional PHPStan | [example](examples/ci-lint-php.yml) |
-| [`ci-test-js.yml`](.github/workflows/ci-test-js.yml) | Jest | [example](examples/ci-test-js.yml) |
+| [`ci-test-js.yml`](.github/workflows/ci-test-js.yml) | Jest or Vitest | [example](examples/ci-test-js.yml) |
 | [`ci-test-php.yml`](.github/workflows/ci-test-php.yml) | PHPUnit, via `@wordpress/env` or standalone | [example](examples/ci-test-php.yml) |
 | [`ci-test-a11y.yml`](.github/workflows/ci-test-a11y.yml) | pa11y-ci WCAG2AA | [example](examples/ci-test-a11y.yml) |
 | [`ci-build.yml`](.github/workflows/ci-build.yml) | Production build + optional artifact upload | [example](examples/ci-build.yml) |

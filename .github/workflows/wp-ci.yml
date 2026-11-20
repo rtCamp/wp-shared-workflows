@@ -132,13 +132,20 @@ on:
         type: string
         default: ""
       test-js-command:
-        description: "Shell command that runs Jest. With test-js-cache, it must forward its arguments to Jest (see ci-test-js.yml). Leave empty for ci-test-js.yml's default."
+        description: >-
+          Shell command that runs the JS tests. With Jest and test-js-cache, it must forward its
+          arguments to Jest (see ci-test-js.yml). Leave empty for ci-test-js.yml's default for
+          test-js-runner.
         type: string
         default: ""
       test-js-cache:
-        description: "Cache Jest data across runs in test-js."
+        description: "Cache Jest data across runs in test-js. Ignored when test-js-runner is vitest."
         type: boolean
         default: true
+      test-js-runner:
+        description: "JS test runner. Use jest or vitest. Leave empty for Jest."
+        type: string
+        default: ""
       test-php-command:
         description: "Shell command that runs PHPUnit. Leave empty for ci-test-php.yml's default."
         type: string
@@ -322,6 +329,7 @@ jobs:
     with:
       runs-on: ${{ inputs.runs-on }}
       node-version: ${{ inputs.node-version }}
+      test-runner: ${{ inputs.test-js-runner }}
       test-command: ${{ inputs.test-js-command }}
       enable-cache: ${{ inputs.test-js-cache }}
       working-dir: ${{ needs.validate-inputs.outputs.working-dir }}
