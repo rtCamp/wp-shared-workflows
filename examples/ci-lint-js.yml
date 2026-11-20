@@ -15,3 +15,4 @@ jobs:
       lint-command: npm run lint:js
       lint-files-command: npm run lint:js:files
       validate-package-json: true
+      typecheck-command: npm run typecheck
