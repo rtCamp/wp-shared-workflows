@@ -67,7 +67,7 @@ you can copy as-is.
 | [`wp-ci.yml`](.github/workflows/wp-ci.yml) | CI orchestrator. One call per unit; routes to the right jobs for `project-type` | [example](examples/wp-ci.yml) |
 | [`ci-detect-changes.yml`](.github/workflows/ci-detect-changes.yml) | Buckets changed files, exposes per-type counts and file lists | [example](examples/ci-detect-changes.yml) |
 | [`ci-lint-css.yml`](.github/workflows/ci-lint-css.yml) | Stylelint | [example](examples/ci-lint-css.yml) |
-| [`ci-lint-js.yml`](.github/workflows/ci-lint-js.yml) | ESLint + optional `package.json` validation | [example](examples/ci-lint-js.yml) |
+| [`ci-lint-js.yml`](.github/workflows/ci-lint-js.yml) | ESLint + optional `package.json` validation and type-check | [example](examples/ci-lint-js.yml) |
 | [`ci-lint-php.yml`](.github/workflows/ci-lint-php.yml) | PHPCS with `cs2pr` annotations + optional PHPStan | [example](examples/ci-lint-php.yml) |
 | [`ci-test-js.yml`](.github/workflows/ci-test-js.yml) | Jest | [example](examples/ci-test-js.yml) |
 | [`ci-test-php.yml`](.github/workflows/ci-test-php.yml) | PHPUnit, via `@wordpress/env` or standalone | [example](examples/ci-test-php.yml) |
