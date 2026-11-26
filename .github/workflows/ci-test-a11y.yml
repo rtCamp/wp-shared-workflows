@@ -78,6 +78,17 @@ jobs:
           BUILD_COMMAND: ${{ inputs.build-command || 'npm run build:prod' }}
         run: bash -eo pipefail -c "$BUILD_COMMAND"
 
+      # wp-env keeps WordPress core and the PHPUnit test library under WP_ENV_HOME
+      # (default ~/.wp-env) and bind-mounts them into its containers. On self-hosted
+      # runners whose Docker daemon runs in a separate container (ARC with dind), only
+      # the work directory is shared with the daemon, so mounts from ~ come up empty and
+      # PHPUnit fails to load /wordpress-phpunit. RUNNER_TEMP is inside the work
+      # directory on every runner type, and the runner sets it, so writing it to
+      # $GITHUB_ENV is safe.
+      - name: Keep wp-env files in the runner work directory
+        shell: bash
+        run: echo "WP_ENV_HOME=$RUNNER_TEMP/wp-env" >> "$GITHUB_ENV"
+
       - name: Start wp-env
         run: npm run wp-env start
 
